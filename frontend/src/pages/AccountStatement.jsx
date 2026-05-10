@@ -1,7 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Layout from '../components/Layout'
 import { useLang } from '../utils/lang'
 import { apiFetch } from '../utils/api'
+
+function toDateString(d) {
+  return d.toISOString().split('T')[0]
+}
+
+function defaultRange() {
+  const to = new Date()
+  const from = new Date()
+  from.setDate(from.getDate() - 30)
+  return { from: toDateString(from), to: toDateString(to) }
+}
 
 const texts = {
   ar: {
@@ -62,11 +73,12 @@ function AccountStatement() {
   const { lang } = useLang()
   const t = texts[lang]
 
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const initialRange = defaultRange()
+  const [dateFrom, setDateFrom] = useState(initialRange.from)
+  const [dateTo, setDateTo] = useState(initialRange.to)
   const [customerFilter, setCustomerFilter] = useState('')
   const [data, setData] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [fetched, setFetched] = useState(false)
 
   const inputStyle = { border: '1.5px solid #d8d4c8', backgroundColor: '#f9f8f4' }
@@ -79,30 +91,71 @@ function AccountStatement() {
     e.target.style.boxShadow = 'none'
   }
 
-  const handleApply = async () => {
+  const runQuery = useCallback(async (from, to, customer) => {
     setLoading(true)
     setFetched(true)
     try {
-      let results = await apiFetch('/orders/statement')
+      const [ordersRaw, returnsRaw] = await Promise.all([
+        apiFetch('/orders'),
+        apiFetch('/returns').catch(() => []),
+      ])
+      const orders = Array.isArray(ordersRaw) ? ordersRaw : Array.isArray(ordersRaw?.data) ? ordersRaw.data : []
+      const returns = Array.isArray(returnsRaw) ? returnsRaw : Array.isArray(returnsRaw?.data) ? returnsRaw.data : []
 
-      if (dateFrom) {
-        results = results.filter((r) => r.created_at && r.created_at >= dateFrom)
-      }
-      if (dateTo) {
-        const toEnd = dateTo + 'T23:59:59'
-        results = results.filter((r) => r.created_at && r.created_at <= toEnd)
-      }
-      if (customerFilter.trim()) {
-        const q = customerFilter.toLowerCase()
-        results = results.filter((r) => r.customer_name && r.customer_name.toLowerCase().includes(q))
+      const returnsByOrder = {}
+      for (const r of returns) {
+        const oid = r.order_id
+        if (!returnsByOrder[oid]) {
+          returnsByOrder[oid] = { total: 0, approvers: new Set() }
+        }
+        returnsByOrder[oid].total += parseFloat(r.refund_amount || 0)
+        if (r.admin_name) returnsByOrder[oid].approvers.add(r.admin_name)
       }
 
-      setData(results)
+      let rows = orders.map((o) => {
+        const entry = returnsByOrder[o.order_id]
+        const refund = entry ? entry.total : 0
+        const approver = entry ? Array.from(entry.approvers).join(', ') : ''
+        return {
+          order_id: o.order_id,
+          invoice_type: o.invoice_type,
+          customer_name: o.customer_name,
+          total_amount: parseFloat(o.total_amount || 0),
+          tax: parseFloat(o.tax || 0),
+          refund_amount: refund,
+          worker_name: o.worker_name,
+          return_admin_name: approver,
+          created_at: o.created_at,
+        }
+      })
+
+      if (from) {
+        rows = rows.filter((r) => r.created_at && r.created_at >= from)
+      }
+      if (to) {
+        const toEnd = to + 'T23:59:59'
+        rows = rows.filter((r) => r.created_at && r.created_at <= toEnd)
+      }
+      if (customer && customer.trim()) {
+        const q = customer.toLowerCase()
+        rows = rows.filter((r) => r.customer_name && r.customer_name.toLowerCase().includes(q))
+      }
+
+      setData(rows)
     } catch {
       setData([])
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    runQuery(initialRange.from, initialRange.to, '')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleApply = () => {
+    runQuery(dateFrom, dateTo, customerFilter)
   }
 
   const totals = data.reduce(
@@ -181,7 +234,7 @@ function AccountStatement() {
           <div className="p-8 text-center text-sm" style={{ color: '#90887a' }}>{t.noData}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table dir={lang === 'ar' ? 'rtl' : 'ltr'} className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: '#f9f8f4' }}>
                   <th className="px-3 py-2 text-start font-semibold" style={{ color: '#18160f' }}>{t.invoice}</th>

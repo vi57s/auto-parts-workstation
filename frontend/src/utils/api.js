@@ -21,10 +21,32 @@ export async function apiFetch(endpoint, options = {}) {
     return
   }
 
-  const data = await res.json()
+  const contentType = res.headers.get('content-type') || ''
+  const isJson = contentType.includes('application/json')
+
+  let data = null
+  if (isJson) {
+    try {
+      data = await res.json()
+    } catch {
+      data = null
+    }
+  } else {
+    try {
+      await res.text()
+    } catch {
+      /* ignore */
+    }
+  }
 
   if (!res.ok) {
-    throw new Error(data.message || 'Request failed')
+    if (data && data.message) throw new Error(data.message)
+    if (res.status === 404) throw new Error(`Endpoint not found: ${endpoint}`)
+    throw new Error(`Request failed (${res.status})`)
+  }
+
+  if (!isJson) {
+    throw new Error('Server returned an unexpected response')
   }
 
   return data

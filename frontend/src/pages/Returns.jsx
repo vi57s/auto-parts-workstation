@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Layout from '../components/Layout'
 import { useLang } from '../utils/lang'
 import { apiFetch } from '../utils/api'
+import { useReturnsDraft } from '../utils/returns'
 
 const texts = {
   ar: {
@@ -27,6 +28,10 @@ const texts = {
     notFound: 'الفاتورة غير موجودة',
     noSelection: 'يرجى اختيار صنف واحد على الأقل',
     today: 'اليوم',
+    fullyReturned: 'تم إرجاعه بالكامل',
+    returnedOf: (x, y) => `(تم إرجاع ${x} من ${y})`,
+    qtyExceeded: 'الكمية المطلوبة تتجاوز المتاح للإرجاع',
+    clear: 'مسح',
   },
   en: {
     lookupTitle: 'Lookup Invoice',
@@ -51,6 +56,10 @@ const texts = {
     notFound: 'Invoice not found',
     noSelection: 'Please select at least one item',
     today: 'Today',
+    fullyReturned: 'Fully returned',
+    returnedOf: (x, y) => `(${x} of ${y} returned)`,
+    qtyExceeded: 'Requested quantity exceeds remaining returnable amount',
+    clear: 'Clear',
   },
 }
 
@@ -59,10 +68,10 @@ function Returns() {
   const t = texts[lang]
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
-  const [invoiceId, setInvoiceId] = useState('')
-  const [order, setOrder] = useState(null)
+  const { draft, updateDraft, resetDraft } = useReturnsDraft()
+  const { invoiceId, order, returnedMap, selected } = draft
+
   const [searchError, setSearchError] = useState('')
-  const [selected, setSelected] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState({ text: '', type: '' })
 
@@ -76,37 +85,70 @@ function Returns() {
     e.target.style.boxShadow = 'none'
   }
 
-  const handleSearch = async () => {
-    if (!invoiceId.trim()) return
-    setSearchError('')
-    setOrder(null)
-    setSelected({})
-    setMessage({ text: '', type: '' })
+  const loadReturnedMap = async (orderId) => {
     try {
-      const data = await apiFetch(`/orders/${invoiceId.trim()}`)
-      setOrder(data)
+      const raw = await apiFetch('/returns')
+      const list = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : []
+      const map = {}
+      for (const r of list) {
+        if (String(r.order_id) !== String(orderId)) continue
+        const pid = r.part_id
+        const qty = parseInt(r.quantity, 10) || 0
+        map[pid] = (map[pid] || 0) + qty
+      }
+      return map
     } catch {
-      setSearchError(t.notFound)
+      return {}
     }
   }
 
+  const handleSearch = async () => {
+    if (!invoiceId.trim()) return
+    setSearchError('')
+    setMessage({ text: '', type: '' })
+    try {
+      const data = await apiFetch(`/orders/${invoiceId.trim()}`)
+      const map = await loadReturnedMap(data.order_id)
+      updateDraft({ order: data, returnedMap: map, selected: {} })
+    } catch {
+      setSearchError(t.notFound)
+      updateDraft({ order: null, returnedMap: {}, selected: {} })
+    }
+  }
+
+  const remainingFor = (item) => {
+    const sold = parseInt(item.quantity, 10) || 0
+    const returned = returnedMap[item.part_id] || 0
+    return Math.max(0, sold - returned)
+  }
+
   const toggleItem = (partId) => {
-    setSelected((prev) => {
-      const copy = { ...prev }
+    updateDraft((prev) => {
+      const copy = { ...prev.selected }
       if (copy[partId]) {
         delete copy[partId]
-      } else {
-        const item = order.items.find((it) => it.part_id === partId)
-        copy[partId] = { quantity: 1, max: item.quantity }
+        return { ...prev, selected: copy }
       }
-      return copy
+      const item = prev.order.items.find((it) => it.part_id === partId)
+      const sold = parseInt(item.quantity, 10) || 0
+      const returned = prev.returnedMap[item.part_id] || 0
+      const remaining = Math.max(0, sold - returned)
+      if (remaining <= 0) return prev
+      copy[partId] = { quantity: 1, max: remaining }
+      return { ...prev, selected: copy }
     })
   }
 
   const updateReturnQty = (partId, qty) => {
-    setSelected((prev) => ({
+    updateDraft((prev) => ({
       ...prev,
-      [partId]: { ...prev[partId], quantity: Math.min(Math.max(1, qty), prev[partId].max) },
+      selected: {
+        ...prev.selected,
+        [partId]: {
+          ...prev.selected[partId],
+          quantity: Math.min(Math.max(1, qty), prev.selected[partId].max),
+        },
+      },
     }))
   }
 
@@ -115,6 +157,15 @@ function Returns() {
     if (entries.length === 0) {
       setMessage({ text: t.noSelection, type: 'error' })
       return
+    }
+
+    for (const [partId, val] of entries) {
+      const item = order.items.find((it) => String(it.part_id) === String(partId))
+      const remaining = item ? remainingFor(item) : 0
+      if (val.quantity > remaining) {
+        setMessage({ text: t.qtyExceeded, type: 'error' })
+        return
+      }
     }
 
     setSubmitting(true)
@@ -133,14 +184,18 @@ function Returns() {
       }
       setMessage({ text: t.success, type: 'success' })
       window.print()
-      setOrder(null)
-      setSelected({})
-      setInvoiceId('')
+      resetDraft()
     } catch (err) {
       setMessage({ text: err.message || t.error, type: 'error' })
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleClear = () => {
+    resetDraft()
+    setSearchError('')
+    setMessage({ text: '', type: '' })
   }
 
   return (
@@ -151,7 +206,7 @@ function Returns() {
           <div className="flex gap-2">
             <input
               value={invoiceId}
-              onChange={(e) => setInvoiceId(e.target.value)}
+              onChange={(e) => updateDraft({ invoiceId: e.target.value })}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder={t.placeholder}
               className="flex-1 px-4 py-2.5 rounded-lg text-sm outline-none transition-all"
@@ -165,6 +220,13 @@ function Returns() {
               style={{ backgroundColor: '#9b2626' }}
             >
               {t.search}
+            </button>
+            <button
+              onClick={handleClear}
+              className="px-4 py-2.5 rounded-lg text-sm font-semibold border"
+              style={{ borderColor: '#dedad0', color: '#18160f' }}
+            >
+              {t.clear}
             </button>
           </div>
           {searchError && <p className="text-sm text-red-600 mt-2">{searchError}</p>}
@@ -198,7 +260,7 @@ function Returns() {
               <div className="px-5 py-3 border-b" style={{ borderColor: '#ede9e0' }}>
                 <h3 className="text-sm font-bold" style={{ color: '#18160f' }}>{t.selectItems}</h3>
               </div>
-              <table className="w-full text-sm">
+              <table dir={lang === 'ar' ? 'rtl' : 'ltr'} className="w-full text-sm">
                 <thead>
                   <tr style={{ backgroundColor: '#f9f8f4' }}>
                     <th className="px-4 py-2 text-start w-10"></th>
@@ -209,38 +271,54 @@ function Returns() {
                   </tr>
                 </thead>
                 <tbody>
-                  {order.items.map((item) => (
-                    <tr key={item.part_id} className="border-b" style={{ borderColor: '#ede9e0' }}>
-                      <td className="px-4 py-2">
-                        <input
-                          type="checkbox"
-                          checked={!!selected[item.part_id]}
-                          onChange={() => toggleItem(item.part_id)}
-                          className="accent-[#9b2626]"
-                        />
-                      </td>
-                      <td className="px-4 py-2">{item.part_name}</td>
-                      <td className="px-4 py-2">{item.serial_number}</td>
-                      <td className="px-4 py-2">{item.quantity}</td>
-                      <td className="px-4 py-2">
-                        {selected[item.part_id] ? (
+                  {order.items.map((item) => {
+                    const sold = parseInt(item.quantity, 10) || 0
+                    const alreadyReturned = returnedMap[item.part_id] || 0
+                    const remaining = Math.max(0, sold - alreadyReturned)
+                    const fullyReturned = remaining <= 0
+                    return (
+                      <tr key={item.part_id} className="border-b" style={{ borderColor: '#ede9e0' }}>
+                        <td className="px-4 py-2">
                           <input
-                            type="number"
-                            min="1"
-                            max={item.quantity}
-                            value={selected[item.part_id].quantity}
-                            onChange={(e) => updateReturnQty(item.part_id, parseInt(e.target.value) || 1)}
-                            className="w-20 px-2 py-1 rounded text-sm outline-none"
-                            style={inputStyle}
-                            onFocus={handleInputFocus}
-                            onBlur={handleInputBlur}
+                            type="checkbox"
+                            checked={!!selected[item.part_id]}
+                            onChange={() => toggleItem(item.part_id)}
+                            disabled={fullyReturned}
+                            className="accent-[#9b2626]"
                           />
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-4 py-2">{item.part_name}</td>
+                        <td className="px-4 py-2">{item.serial_number}</td>
+                        <td className="px-4 py-2">
+                          <span>{sold}</span>
+                          {alreadyReturned > 0 && (
+                            <span className="ms-2 text-xs" style={{ color: '#9b2626' }}>
+                              {t.returnedOf(alreadyReturned, sold)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2">
+                          {fullyReturned ? (
+                            <span className="text-xs" style={{ color: '#90887a' }}>{t.fullyReturned}</span>
+                          ) : selected[item.part_id] ? (
+                            <input
+                              type="number"
+                              min="1"
+                              max={remaining}
+                              value={selected[item.part_id].quantity}
+                              onChange={(e) => updateReturnQty(item.part_id, parseInt(e.target.value) || 1)}
+                              className="w-20 px-2 py-1 rounded text-sm outline-none"
+                              style={inputStyle}
+                              onFocus={handleInputFocus}
+                              onBlur={handleInputBlur}
+                            />
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

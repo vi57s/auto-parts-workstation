@@ -174,7 +174,7 @@ function UserManagement() {
           <div className="p-8 text-center text-sm" style={{ color: '#90887a' }}>{t.noData}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table dir={lang === 'ar' ? 'rtl' : 'ltr'} className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: '#f9f8f4' }}>
                   <th className="px-4 py-3 text-start font-semibold" style={{ color: '#18160f' }}>{t.name}</th>
@@ -225,6 +225,7 @@ function UserManagement() {
           onClick={() => setShowAddModal(false)}
         >
           <div
+            dir={lang === 'ar' ? 'rtl' : 'ltr'}
             className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6"
             onClick={(e) => e.stopPropagation()}
           >
@@ -315,6 +316,7 @@ function UserManagement() {
           onClick={() => setShowResetModal(false)}
         >
           <div
+            dir={lang === 'ar' ? 'rtl' : 'ltr'}
             className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6"
             onClick={(e) => e.stopPropagation()}
           >

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Layout from '../components/Layout'
 import { useLang } from '../utils/lang'
 import { apiFetch } from '../utils/api'
+import { useSalesInvoiceDraft } from '../utils/salesInvoice'
 
 const texts = {
   ar: {
@@ -45,6 +46,9 @@ const texts = {
     success: 'تم إصدار الفاتورة بنجاح',
     error: 'حدث خطأ',
     address: 'العنوان',
+    newInvoice: 'فاتورة جديدة',
+    customerNameRequired: 'يرجى إدخال اسم العميل',
+    customerCreateFailed: 'تعذّر إنشاء بيانات العميل',
   },
   en: {
     searchSerial: 'Part Number',
@@ -87,6 +91,9 @@ const texts = {
     success: 'Invoice created successfully',
     error: 'An error occurred',
     address: 'Address',
+    newInvoice: 'New Invoice',
+    customerNameRequired: 'Customer name is required',
+    customerCreateFailed: 'Failed to create customer record',
   },
 }
 
@@ -95,19 +102,23 @@ function SalesInvoice() {
   const t = texts[lang]
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
+  const { draft, updateDraft, resetDraft } = useSalesInvoiceDraft()
+  const {
+    items,
+    invoiceType,
+    customerName,
+    customerType,
+    customerContact,
+    customerAddress,
+    customerId,
+    customerSearch,
+    taxRate,
+  } = draft
+
   const [serial, setSerial] = useState('')
   const [foundPart, setFoundPart] = useState(null)
   const [searchError, setSearchError] = useState('')
-  const [items, setItems] = useState([])
-  const [invoiceType, setInvoiceType] = useState('cash')
-  const [customerName, setCustomerName] = useState('')
-  const [customerType, setCustomerType] = useState('individual')
-  const [customerContact, setCustomerContact] = useState('')
-  const [customerAddress, setCustomerAddress] = useState('')
-  const [customerId, setCustomerId] = useState(null)
-  const [customerSearch, setCustomerSearch] = useState('')
   const [customerResults, setCustomerResults] = useState([])
-  const [taxRate, setTaxRate] = useState(15)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState({ text: '', type: '' })
 
@@ -130,38 +141,37 @@ function SalesInvoice() {
     if (!foundPart) return
     const exists = items.find((it) => it.part_id === foundPart.part_id)
     if (exists) return
-    setItems([
-      ...items,
-      {
-        part_id: foundPart.part_id,
-        part_name: foundPart.part_name,
-        serial_number: foundPart.serial_number,
-        unit_price: parseFloat(foundPart.price),
-        cost_price: parseFloat(foundPart.cost_price),
-        max_qty: foundPart.quantity,
-        quantity: 1,
-        discount_percentage: 0,
-        error: '',
-      },
-    ])
+    const newItem = {
+      part_id: foundPart.part_id,
+      part_name: foundPart.part_name,
+      serial_number: foundPart.serial_number,
+      unit_price: parseFloat(foundPart.price),
+      cost_price: parseFloat(foundPart.cost_price),
+      max_qty: foundPart.quantity,
+      quantity: 1,
+      discount_percentage: 0,
+      error: '',
+    }
+    updateDraft({ items: [...items, newItem] })
     setFoundPart(null)
     setSerial('')
   }
 
   const updateItem = (index, field, value) => {
-    setItems((prev) =>
-      prev.map((item, i) => {
+    updateDraft((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) => {
         if (i !== index) return item
         const updated = { ...item, [field]: value }
         const finalPrice = updated.unit_price * (1 - updated.discount_percentage / 100)
         updated.error = finalPrice < updated.cost_price ? t.belowCost : ''
         return updated
-      })
-    )
+      }),
+    }))
   }
 
   const removeItem = (index) => {
-    setItems((prev) => prev.filter((_, i) => i !== index))
+    updateDraft((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }))
   }
 
   const subtotal = items.reduce((sum, it) => {
@@ -174,9 +184,7 @@ function SalesInvoice() {
   const hasErrors = items.some((it) => it.error)
 
   const searchCustomers = async (query) => {
-    setCustomerSearch(query)
-    setCustomerName(query)
-    setCustomerId(null)
+    updateDraft({ customerSearch: query, customerName: query, customerId: null })
     if (query.length < 2) {
       setCustomerResults([])
       return
@@ -191,13 +199,44 @@ function SalesInvoice() {
   }
 
   const selectCustomer = (c) => {
-    setCustomerId(c.customer_id)
-    setCustomerName(c.name)
-    setCustomerType(c.customer_type)
-    setCustomerContact(c.phone || '')
-    setCustomerAddress(c.address || '')
-    setCustomerSearch(c.name)
+    updateDraft({
+      customerId: c.customer_id,
+      customerName: c.name,
+      customerType: c.customer_type,
+      customerContact: c.phone || '',
+      customerAddress: c.address || '',
+      customerSearch: c.name,
+    })
     setCustomerResults([])
+  }
+
+  const ensureCustomerId = async () => {
+    if (customerId) return customerId
+
+    try {
+      const customers = await apiFetch('/customers')
+      const match = customers.find(
+        (c) => c.name.trim().toLowerCase() === customerName.trim().toLowerCase()
+      )
+      if (match) {
+        updateDraft({ customerId: match.customer_id })
+        return match.customer_id
+      }
+    } catch {
+      /* fall through to creation */
+    }
+
+    const created = await apiFetch('/customers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: customerName.trim(),
+        phone: customerContact || null,
+        address: customerAddress || null,
+        customer_type: customerType,
+      }),
+    })
+    updateDraft({ customerId: created.customer_id })
+    return created.customer_id
   }
 
   const handleSubmit = async () => {
@@ -211,13 +250,24 @@ function SalesInvoice() {
     if (hasErrors) return
 
     if (invoiceType === 'credit' && !customerName.trim()) {
-      setMessage({ text: t.customerName, type: 'error' })
+      setMessage({ text: t.customerNameRequired, type: 'error' })
       return
     }
 
     setSubmitting(true)
 
     try {
+      let resolvedCustomerId = null
+      if (invoiceType === 'credit') {
+        try {
+          resolvedCustomerId = await ensureCustomerId()
+        } catch (err) {
+          setMessage({ text: err.message || t.customerCreateFailed, type: 'error' })
+          setSubmitting(false)
+          return
+        }
+      }
+
       for (const item of items) {
         await apiFetch('/orders/sell', {
           method: 'POST',
@@ -226,7 +276,7 @@ function SalesInvoice() {
             quantity: item.quantity,
             discount: item.discount_percentage,
             invoice_type: invoiceType,
-            customer_id: customerId,
+            customer_id: resolvedCustomerId,
             tax_rate: taxRate,
           }),
         })
@@ -234,19 +284,23 @@ function SalesInvoice() {
 
       setMessage({ text: t.success, type: 'success' })
       window.print()
-      setItems([])
+      resetDraft()
       setFoundPart(null)
       setSerial('')
-      setCustomerName('')
-      setCustomerContact('')
-      setCustomerAddress('')
-      setCustomerId(null)
-      setInvoiceType('cash')
     } catch (err) {
       setMessage({ text: err.message || t.error, type: 'error' })
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleNewInvoice = () => {
+    resetDraft()
+    setFoundPart(null)
+    setSerial('')
+    setSearchError('')
+    setCustomerResults([])
+    setMessage({ text: '', type: '' })
   }
 
   const inputStyle = {
@@ -294,6 +348,13 @@ function SalesInvoice() {
               >
                 {t.search}
               </button>
+              <button
+                onClick={handleNewInvoice}
+                className="px-4 py-2.5 rounded-lg text-sm font-semibold border"
+                style={{ borderColor: '#dedad0', color: '#18160f' }}
+              >
+                {t.newInvoice}
+              </button>
             </div>
             {searchError && <p className="text-sm text-red-600 mt-2">{searchError}</p>}
             {foundPart && (
@@ -320,7 +381,7 @@ function SalesInvoice() {
               <h3 className="text-sm font-bold" style={{ color: '#18160f' }}>{t.items}</h3>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table dir={lang === 'ar' ? 'rtl' : 'ltr'} className="w-full text-sm">
                 <thead>
                   <tr style={{ backgroundColor: '#f9f8f4' }}>
                     <th className="px-3 py-2 text-start font-semibold" style={{ color: '#18160f' }}>{t.num}</th>
@@ -399,7 +460,7 @@ function SalesInvoice() {
               {['cash', 'credit'].map((type) => (
                 <button
                   key={type}
-                  onClick={() => setInvoiceType(type)}
+                  onClick={() => updateDraft({ invoiceType: type })}
                   className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors"
                   style={{
                     backgroundColor: invoiceType === type ? '#9b2626' : 'white',
@@ -446,7 +507,7 @@ function SalesInvoice() {
                   <label className="block text-sm font-medium mb-1" style={{ color: '#18160f' }}>{t.customerType}</label>
                   <select
                     value={customerType}
-                    onChange={(e) => setCustomerType(e.target.value)}
+                    onChange={(e) => updateDraft({ customerType: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none transition-all"
                     style={inputStyle}
                     onFocus={handleInputFocus}
@@ -460,7 +521,18 @@ function SalesInvoice() {
                   <label className="block text-sm font-medium mb-1" style={{ color: '#18160f' }}>{t.contact}</label>
                   <input
                     value={customerContact}
-                    onChange={(e) => setCustomerContact(e.target.value)}
+                    onChange={(e) => updateDraft({ customerContact: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none transition-all"
+                    style={inputStyle}
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: '#18160f' }}>{t.address}</label>
+                  <input
+                    value={customerAddress}
+                    onChange={(e) => updateDraft({ customerAddress: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none transition-all"
                     style={inputStyle}
                     onFocus={handleInputFocus}
@@ -485,7 +557,7 @@ function SalesInvoice() {
                   min="0"
                   max="100"
                   value={taxRate}
-                  onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => updateDraft({ taxRate: parseFloat(e.target.value) || 0 })}
                   className="w-20 px-2 py-1 rounded text-sm text-end outline-none print:border-none print:bg-transparent"
                   style={inputStyle}
                   onFocus={handleInputFocus}

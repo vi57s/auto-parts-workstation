@@ -9,7 +9,7 @@ function Layout({ children, titleKey }) {
     <div dir={dir} className="min-h-screen" style={{ backgroundColor: '#f5f4f0' }}>
       <Sidebar />
       <TopBar titleKey={titleKey} />
-      <main className="pt-14" style={{ marginLeft: dir === 'ltr' ? '220px' : '0', marginRight: dir === 'rtl' ? '220px' : '0' }}>
+      <main className="pt-14" style={{ marginLeft: '220px', marginRight: 0 }}>
         <div className="p-6">{children}</div>
       </main>
     </div>

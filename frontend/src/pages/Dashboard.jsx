@@ -6,7 +6,7 @@ import { apiFetch } from '../utils/api'
 const texts = {
   ar: {
     todaySales: 'مبيعات اليوم',
-    todayRevenue: 'إيرادات اليوم',
+    todayRevenue: 'إيرادات اليوم (صافي)',
     totalParts: 'إجمالي القطع',
     lowStock: 'مخزون منخفض',
     recentSales: 'آخر المبيعات',
@@ -15,6 +15,7 @@ const texts = {
     customer: 'العميل',
     total: 'الإجمالي',
     tax: 'الضريبة',
+    returnsCol: 'المرتجعات',
     date: 'التاريخ',
     seller: 'البائع',
     cash: 'نقدي',
@@ -22,10 +23,12 @@ const texts = {
     noData: 'لا توجد مبيعات حتى الآن',
     pieces: 'قطعة',
     orders: 'طلب',
+    partiallyReturned: 'مرتجع جزئياً',
+    fullyReturned: 'مرتجع بالكامل',
   },
   en: {
     todaySales: "Today's Sales",
-    todayRevenue: "Today's Revenue",
+    todayRevenue: "Today's Revenue (Net)",
     totalParts: 'Total Parts',
     lowStock: 'Low Stock',
     recentSales: 'Recent Sales',
@@ -34,6 +37,7 @@ const texts = {
     customer: 'Customer',
     total: 'Total',
     tax: 'Tax',
+    returnsCol: 'Returns',
     date: 'Date',
     seller: 'Seller',
     cash: 'Cash',
@@ -41,6 +45,8 @@ const texts = {
     noData: 'No sales yet',
     pieces: 'parts',
     orders: 'orders',
+    partiallyReturned: 'Partially Returned',
+    fullyReturned: 'Fully Returned',
   },
 }
 
@@ -49,26 +55,46 @@ function Dashboard() {
   const t = texts[lang]
   const [stats, setStats] = useState({ salesCount: 0, revenue: 0, totalParts: 0, lowStock: 0 })
   const [recentOrders, setRecentOrders] = useState([])
+  const [returnsByOrder, setReturnsByOrder] = useState({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [orders, parts] = await Promise.all([
+        const user = JSON.parse(localStorage.getItem('user') || '{}')
+        const canFetchReturns = user.role === 'admin'
+
+        const [orders, parts, returnsRaw] = await Promise.all([
           apiFetch('/orders'),
           apiFetch('/parts'),
+          canFetchReturns ? apiFetch('/returns').catch(() => []) : Promise.resolve([]),
         ])
 
+        const returns = Array.isArray(returnsRaw) ? returnsRaw : Array.isArray(returnsRaw?.data) ? returnsRaw.data : []
         const today = new Date().toISOString().split('T')[0]
+
+        const byOrder = {}
+        for (const r of returns) {
+          const oid = r.order_id
+          if (!byOrder[oid]) byOrder[oid] = { refund: 0, qty: 0 }
+          byOrder[oid].refund += parseFloat(r.refund_amount || 0)
+          byOrder[oid].qty += parseInt(r.quantity || 0, 10)
+        }
+
         const todayOrders = orders.filter((o) => o.created_at && o.created_at.startsWith(today))
+        const todayRevenue = todayOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
+        const todayReturnRefund = returns
+          .filter((r) => r.return_date && r.return_date.startsWith(today))
+          .reduce((sum, r) => sum + parseFloat(r.refund_amount || 0), 0)
 
         setStats({
           salesCount: todayOrders.length,
-          revenue: todayOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0),
+          revenue: Math.max(0, todayRevenue - todayReturnRefund),
           totalParts: parts.reduce((sum, p) => sum + (p.quantity || 0), 0),
           lowStock: parts.filter((p) => p.quantity <= 5).length,
         })
 
+        setReturnsByOrder(byOrder)
         setRecentOrders(orders.slice(0, 10))
       } catch {
         setRecentOrders([])
@@ -160,7 +186,7 @@ function Dashboard() {
           <div className="p-8 text-center text-sm" style={{ color: '#90887a' }}>{t.noData}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table dir={lang === 'ar' ? 'rtl' : 'ltr'} className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: '#f9f8f4' }}>
                   <th className="px-4 py-3 text-start font-semibold" style={{ color: '#18160f' }}>{t.invoice}</th>
@@ -168,32 +194,52 @@ function Dashboard() {
                   <th className="px-4 py-3 text-start font-semibold" style={{ color: '#18160f' }}>{t.customer}</th>
                   <th className="px-4 py-3 text-start font-semibold" style={{ color: '#18160f' }}>{t.total}</th>
                   <th className="px-4 py-3 text-start font-semibold" style={{ color: '#18160f' }}>{t.tax}</th>
+                  <th className="px-4 py-3 text-start font-semibold" style={{ color: '#18160f' }}>{t.returnsCol}</th>
                   <th className="px-4 py-3 text-start font-semibold" style={{ color: '#18160f' }}>{t.date}</th>
                   <th className="px-4 py-3 text-start font-semibold" style={{ color: '#18160f' }}>{t.seller}</th>
                 </tr>
               </thead>
               <tbody>
-                {recentOrders.map((order) => (
-                  <tr key={order.order_id} className="border-b hover:bg-[#fdf9f9]" style={{ borderColor: '#ede9e0' }}>
-                    <td className="px-4 py-3">{order.order_id}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="px-2 py-0.5 rounded-full text-xs font-medium"
-                        style={{
-                          backgroundColor: order.invoice_type === 'cash' ? '#e6f9e6' : '#fff3e6',
-                          color: order.invoice_type === 'cash' ? '#166534' : '#9a3412',
-                        }}
-                      >
-                        {order.invoice_type === 'cash' ? t.cash : t.credit}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{order.customer_name || '—'}</td>
-                    <td className="px-4 py-3 font-medium">{parseFloat(order.total_amount || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3">{parseFloat(order.tax || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3">{order.created_at ? new Date(order.created_at).toLocaleDateString() : '—'}</td>
-                    <td className="px-4 py-3">{order.worker_name || '—'}</td>
-                  </tr>
-                ))}
+                {recentOrders.map((order) => {
+                  const total = parseFloat(order.total_amount || 0)
+                  const refund = returnsByOrder[order.order_id]?.refund || 0
+                  const fullyReturned = refund > 0 && refund >= total - 0.01
+                  const partiallyReturned = refund > 0 && !fullyReturned
+                  return (
+                    <tr key={order.order_id} className="border-b hover:bg-[#fdf9f9]" style={{ borderColor: '#ede9e0' }}>
+                      <td className="px-4 py-3">{order.order_id}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span
+                            className="px-2 py-0.5 rounded-full text-xs font-medium"
+                            style={{
+                              backgroundColor: order.invoice_type === 'cash' ? '#e6f9e6' : '#fff3e6',
+                              color: order.invoice_type === 'cash' ? '#166534' : '#9a3412',
+                            }}
+                          >
+                            {order.invoice_type === 'cash' ? t.cash : t.credit}
+                          </span>
+                          {fullyReturned && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#fde2e2', color: '#9b2626' }}>
+                              {t.fullyReturned}
+                            </span>
+                          )}
+                          {partiallyReturned && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#fff3e6', color: '#9a3412' }}>
+                              {t.partiallyReturned}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{order.customer_name || '—'}</td>
+                      <td className="px-4 py-3 font-medium">{total.toFixed(2)}</td>
+                      <td className="px-4 py-3">{parseFloat(order.tax || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-red-600">{refund > 0 ? refund.toFixed(2) : '—'}</td>
+                      <td className="px-4 py-3">{order.created_at ? new Date(order.created_at).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-3">{order.worker_name || '—'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

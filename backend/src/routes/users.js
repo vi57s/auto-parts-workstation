@@ -30,6 +30,29 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
+router.put("/:id/password", verifyToken, verifyAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body;
+
+  if (!password || typeof password !== "string" || password.length === 0) {
+    return res.status(400).json({ message: "password is required" });
+  }
+
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      "UPDATE users SET password_hash = $1 WHERE user_id = $2 RETURNING user_id",
+      [hash, id],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json({ success: true, message: "Password updated" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
   try {
