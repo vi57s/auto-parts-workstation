@@ -63,7 +63,7 @@ const navItems = [
   {
     key: 'statement',
     path: '/statement',
-    adminOnly: true,
+    ownerOnly: true,
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <line x1="12" y1="1" x2="12" y2="23" />
@@ -121,7 +121,8 @@ function Sidebar() {
 
       <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
-          if (item.adminOnly && user.role !== 'admin') return null
+          if (item.ownerOnly && user.role !== 'owner') return null
+          if (item.adminOnly && user.role !== 'admin' && user.role !== 'owner') return null
           return (
             <NavLink
               key={item.key}

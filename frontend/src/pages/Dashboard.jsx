@@ -25,6 +25,11 @@ const texts = {
     orders: 'طلب',
     partiallyReturned: 'مرتجع جزئياً',
     fullyReturned: 'مرتجع بالكامل',
+    windowAll: 'كل البيانات',
+    window14: 'آخر 14 يوم',
+    window3: 'آخر 3 أيام',
+    dataWindow: 'نطاق البيانات',
+    accessDenied: 'ليس لديك صلاحية للوصول',
   },
   en: {
     todaySales: "Today's Sales",
@@ -47,27 +52,47 @@ const texts = {
     orders: 'orders',
     partiallyReturned: 'Partially Returned',
     fullyReturned: 'Fully Returned',
+    windowAll: 'All time',
+    window14: 'Last 14 days',
+    window3: 'Last 3 days',
+    dataWindow: 'Data window',
+    accessDenied: 'Access denied',
   },
 }
 
 function Dashboard() {
   const { lang } = useLang()
   const t = texts[lang]
+  const user = JSON.parse(localStorage.getItem('user') || '{}')
   const [stats, setStats] = useState({ salesCount: 0, revenue: 0, totalParts: 0, lowStock: 0 })
   const [recentOrders, setRecentOrders] = useState([])
   const [returnsByOrder, setReturnsByOrder] = useState({})
   const [loading, setLoading] = useState(true)
+  const [accessDeniedToast, setAccessDeniedToast] = useState(false)
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('access_denied_toast') === '1') {
+        sessionStorage.removeItem('access_denied_toast')
+        setAccessDeniedToast(true)
+        const id = setTimeout(() => setAccessDeniedToast(false), 3000)
+        return () => clearTimeout(id)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const windowLabel =
+    user.role === 'owner' ? t.windowAll : user.role === 'admin' ? t.window14 : t.window3
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const user = JSON.parse(localStorage.getItem('user') || '{}')
-        const canFetchReturns = user.role === 'admin'
-
         const [orders, parts, returnsRaw] = await Promise.all([
           apiFetch('/orders'),
           apiFetch('/parts'),
-          canFetchReturns ? apiFetch('/returns').catch(() => []) : Promise.resolve([]),
+          apiFetch('/returns').catch(() => []),
         ])
 
         const returns = Array.isArray(returnsRaw) ? returnsRaw : Array.isArray(returnsRaw?.data) ? returnsRaw.data : []
@@ -154,6 +179,16 @@ function Dashboard() {
 
   return (
     <Layout titleKey="dashboard">
+      <div className="mb-4 flex items-center gap-2 text-xs">
+        <span style={{ color: '#90887a' }}>{t.dataWindow}:</span>
+        <span
+          className="px-2.5 py-1 rounded-full font-semibold"
+          style={{ backgroundColor: 'rgba(155,38,38,0.08)', color: '#9b2626' }}
+        >
+          {windowLabel}
+        </span>
+      </div>
+
       <div className="grid grid-cols-4 gap-4 mb-6">
         {statCards.map((card, i) => (
           <div
@@ -245,6 +280,15 @@ function Dashboard() {
           </div>
         )}
       </div>
+
+      {accessDeniedToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-white text-sm font-medium shadow-lg"
+          style={{ backgroundColor: '#9b2626' }}
+        >
+          {t.accessDenied}
+        </div>
+      )}
     </Layout>
   )
 }

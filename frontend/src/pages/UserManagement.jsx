@@ -12,16 +12,22 @@ const texts = {
     confirmPassword: 'تأكيد كلمة المرور',
     newPassword: 'كلمة المرور الجديدة',
     role: 'الصلاحية',
+    owner: 'المالك',
     admin: 'مدير',
     worker: 'موظف',
     createdAt: 'تاريخ الإنشاء',
     actions: 'إجراءات',
     resetPassword: 'إعادة تعيين كلمة المرور',
+    delete: 'حذف',
+    deleting: 'جاري الحذف...',
     save: 'حفظ',
     saving: 'جاري الحفظ...',
     cancel: 'إلغاء',
     addTitle: 'إضافة مستخدم جديد',
     resetTitle: 'إعادة تعيين كلمة المرور',
+    deleteTitle: 'تأكيد الحذف',
+    deleteConfirm: (n) => `هل أنت متأكد من حذف المستخدم ${n}؟ لا يمكن التراجع عن هذه العملية.`,
+    deleted: 'تم حذف المستخدم',
     noData: 'لا يوجد مستخدمون',
     mismatch: 'كلمتا المرور غير متطابقتين',
     required: 'يرجى ملء جميع الحقول',
@@ -36,16 +42,22 @@ const texts = {
     confirmPassword: 'Confirm Password',
     newPassword: 'New Password',
     role: 'Role',
+    owner: 'Owner',
     admin: 'Admin',
     worker: 'Worker',
     createdAt: 'Created At',
     actions: 'Actions',
     resetPassword: 'Reset Password',
+    delete: 'Delete',
+    deleting: 'Deleting...',
     save: 'Save',
     saving: 'Saving...',
     cancel: 'Cancel',
     addTitle: 'Add New User',
     resetTitle: 'Reset Password',
+    deleteTitle: 'Confirm Delete',
+    deleteConfirm: (n) => `Are you sure you want to delete user ${n}? This action cannot be undone.`,
+    deleted: 'User deleted',
     noData: 'No users found',
     mismatch: 'Passwords do not match',
     required: 'Please fill all fields',
@@ -54,17 +66,35 @@ const texts = {
   },
 }
 
+const roleBadgeStyle = (role) => {
+  if (role === 'owner') return { backgroundColor: '#9b2626', color: 'white' }
+  if (role === 'admin') return { backgroundColor: 'rgba(155,38,38,0.1)', color: '#9b2626' }
+  return { backgroundColor: '#e6f9e6', color: '#166534' }
+}
+
+const canActOn = (actorRole, targetRole, isSelf) => {
+  if (isSelf) return false
+  if (actorRole === 'owner') return targetRole !== 'owner'
+  if (actorRole === 'admin') return targetRole === 'worker'
+  return false
+}
+
 function UserManagement() {
   const { lang } = useLang()
   const t = texts[lang]
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [resetUserId, setResetUserId] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [message, setMessage] = useState({ text: '', type: '' })
+  const [toast, setToast] = useState('')
 
   const [addForm, setAddForm] = useState({ name: '', email: '', password: '', role: 'worker' })
   const [resetForm, setResetForm] = useState({ password: '', confirmPassword: '' })
@@ -152,6 +182,30 @@ function UserManagement() {
     setShowResetModal(true)
   }
 
+  const openDeleteModal = (u) => {
+    setDeleteTarget(u)
+    setMessage({ text: '', type: '' })
+    setShowDeleteModal(true)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setMessage({ text: '', type: '' })
+    try {
+      await apiFetch(`/users/${deleteTarget.user_id}`, { method: 'DELETE' })
+      setShowDeleteModal(false)
+      setDeleteTarget(null)
+      setToast(t.deleted)
+      setTimeout(() => setToast(''), 2500)
+      fetchUsers()
+    } catch (err) {
+      setMessage({ text: err.message || t.error, type: 'error' })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <Layout titleKey="users">
       <div className="flex gap-3 mb-4">
@@ -185,33 +239,49 @@ function UserManagement() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
-                  <tr key={u.user_id} className="border-b hover:bg-[#fdf9f9]" style={{ borderColor: '#ede9e0' }}>
-                    <td className="px-4 py-3 font-medium">{u.name}</td>
-                    <td className="px-4 py-3">{u.email}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="px-2 py-0.5 rounded-full text-xs font-medium"
-                        style={{
-                          backgroundColor: u.role === 'admin' ? 'rgba(155,38,38,0.1)' : '#e6f9e6',
-                          color: u.role === 'admin' ? '#9b2626' : '#166534',
-                        }}
-                      >
-                        {u.role === 'admin' ? t.admin : t.worker}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => openResetModal(u.user_id)}
-                        className="text-sm font-medium transition-colors"
-                        style={{ color: '#9b2626' }}
-                      >
-                        {t.resetPassword}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {users.map((u) => {
+                  const isSelf = String(u.user_id) === String(currentUser.user_id)
+                  const canManage = canActOn(currentUser.role, u.role, isSelf)
+                  const roleLabel = u.role === 'owner' ? t.owner : u.role === 'admin' ? t.admin : t.worker
+                  return (
+                    <tr key={u.user_id} className="border-b hover:bg-[#fdf9f9]" style={{ borderColor: '#ede9e0' }}>
+                      <td className="px-4 py-3 font-medium">{u.name}</td>
+                      <td className="px-4 py-3">{u.email}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={roleBadgeStyle(u.role)}>
+                          {roleLabel}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-3">
+                        {canManage ? (
+                          <div className="flex items-center gap-4">
+                            <button
+                              onClick={() => openResetModal(u.user_id)}
+                              className="text-sm font-medium transition-colors"
+                              style={{ color: '#9b2626' }}
+                            >
+                              {t.resetPassword}
+                            </button>
+                            <button
+                              onClick={() => openDeleteModal(u)}
+                              className="text-sm font-medium transition-colors flex items-center gap-1"
+                              style={{ color: '#dc2626' }}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                              {t.delete}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs" style={{ color: '#90887a' }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -277,7 +347,8 @@ function UserManagement() {
                   onBlur={handleInputBlur}
                 >
                   <option value="worker">{t.worker}</option>
-                  <option value="admin">{t.admin}</option>
+                  {currentUser.role === 'owner' && <option value="admin">{t.admin}</option>}
+                  {currentUser.role === 'owner' && <option value="owner">{t.owner}</option>}
                 </select>
               </div>
             </div>
@@ -372,6 +443,57 @@ function UserManagement() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {showDeleteModal && deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => !deleting && setShowDeleteModal(false)}
+        >
+          <div
+            dir={lang === 'ar' ? 'rtl' : 'ltr'}
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-3" style={{ color: '#18160f' }}>{t.deleteTitle}</h3>
+            <p className="text-sm mb-4" style={{ color: '#90887a' }}>{t.deleteConfirm(deleteTarget.name)}</p>
+
+            {message.text && (
+              <div className={`mb-3 text-sm text-center py-2 px-3 rounded-lg border ${message.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                {message.text}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-lg text-white font-semibold text-sm disabled:opacity-50"
+                style={{ backgroundColor: '#dc2626' }}
+              >
+                {deleting ? t.deleting : t.delete}
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold border disabled:opacity-50"
+                style={{ borderColor: '#dedad0', color: '#18160f' }}
+              >
+                {t.cancel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-white text-sm font-medium shadow-lg"
+          style={{ backgroundColor: '#166534' }}
+        >
+          {toast}
         </div>
       )}
     </Layout>

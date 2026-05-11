@@ -7,6 +7,8 @@ const texts = {
   ar: {
     searchPlaceholder: 'بحث بالاسم أو الرقم التسلسلي...',
     addPart: 'إضافة قطعة',
+    lowStock: 'المخزون المنخفض',
+    itemsCount: (n) => `${n} منتجات`,
     serial: 'الرقم التسلسلي',
     name: 'الاسم',
     location: 'الموقع',
@@ -31,6 +33,8 @@ const texts = {
   en: {
     searchPlaceholder: 'Search by name or serial...',
     addPart: 'Add Part',
+    lowStock: 'Low Stock',
+    itemsCount: (n) => `${n} items`,
     serial: 'Serial',
     name: 'Name',
     location: 'Location',
@@ -63,6 +67,7 @@ function Inventory() {
 
   const [parts, setParts] = useState([])
   const [search, setSearch] = useState('')
+  const [lowStockOnly, setLowStockOnly] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -95,7 +100,10 @@ function Inventory() {
     fetchParts()
   }, [fetchParts])
 
+  const lowStockCount = parts.filter((p) => (p.quantity || 0) <= 10).length
+
   const filtered = parts.filter((p) => {
+    if (lowStockOnly && (p.quantity || 0) > 10) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
     return p.part_name.toLowerCase().includes(q) || p.serial_number.toLowerCase().includes(q)
@@ -154,7 +162,7 @@ function Inventory() {
 
   return (
     <Layout titleKey="inventory">
-      <div className="flex gap-3 mb-4 print:hidden">
+      <div className="flex gap-3 mb-4 print:hidden items-center">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -164,6 +172,26 @@ function Inventory() {
           onFocus={handleInputFocus}
           onBlur={handleInputBlur}
         />
+        <button
+          onClick={() => setLowStockOnly((v) => !v)}
+          className="px-4 py-2.5 rounded-lg text-sm font-semibold border transition-colors flex items-center gap-2"
+          style={{
+            backgroundColor: lowStockOnly ? '#9b2626' : 'white',
+            color: lowStockOnly ? 'white' : '#18160f',
+            borderColor: lowStockOnly ? '#9b2626' : '#dedad0',
+          }}
+        >
+          {t.lowStock}
+          <span
+            className="px-2 py-0.5 rounded-full text-xs font-medium"
+            style={{
+              backgroundColor: lowStockOnly ? 'rgba(255,255,255,0.25)' : '#fde2e2',
+              color: lowStockOnly ? 'white' : '#9b2626',
+            }}
+          >
+            {t.itemsCount(lowStockCount)}
+          </span>
+        </button>
         <button
           onClick={openAdd}
           className="px-5 py-2.5 rounded-lg text-white text-sm font-semibold"

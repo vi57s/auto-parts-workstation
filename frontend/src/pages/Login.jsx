@@ -87,7 +87,7 @@ function Login() {
       }
 
       localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify({ name: data.name, role: data.role }))
+      localStorage.setItem('user', JSON.stringify({ user_id: data.user_id, name: data.name, role: data.role }))
       navigate('/dashboard')
     } catch {
       setError(t.serverError)

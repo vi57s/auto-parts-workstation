@@ -1,28 +1,38 @@
 const express = require("express");
 const pool = require("../config/db");
-const { verifyToken, verifyAdmin } = require("../middleware/auth");
+const { verifyToken, verifyAdmin, verifyOwner } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.get("/statement", verifyToken, verifyAdmin, async (req, res) => {
+function intervalForRole(role) {
+  if (role === "owner") return null;
+  if (role === "admin") return "14 days";
+  return "3 days";
+}
+
+router.get("/full-statement", verifyToken, verifyOwner, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT vip.*,
-              u.name AS worker_name,
-              c.name AS customer_name,
-              c.customer_type,
-              r.return_id,
-              r.part_id AS returned_part_id,
-              r.quantity AS returned_quantity,
-              r.refund_amount,
-              r.return_date,
-              ra.name AS return_admin_name
-       FROM view_invoice_profits vip
-       LEFT JOIN users u ON vip.user_id = u.user_id
-       LEFT JOIN customers c ON vip.customer_id = c.customer_id
-       LEFT JOIN returns r ON vip.order_id = r.order_id
-       LEFT JOIN users ra ON r.admin_id = ra.user_id
-       ORDER BY vip.created_at DESC`
+      `SELECT o.*, u.name AS worker_name, c.name AS customer_name
+       FROM orders o
+       LEFT JOIN users u ON o.user_id = u.user_id
+       LEFT JOIN customers c ON o.customer_id = c.customer_id
+       ORDER BY o.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get("/statement", verifyToken, verifyOwner, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT o.*, u.name AS worker_name, c.name AS customer_name
+       FROM orders o
+       LEFT JOIN users u ON o.user_id = u.user_id
+       LEFT JOIN customers c ON o.customer_id = c.customer_id
+       ORDER BY o.created_at DESC`
     );
     res.json(result.rows);
   } catch (err) {
@@ -62,12 +72,20 @@ router.post("/sell", verifyToken, async (req, res) => {
 
 router.get("/", verifyToken, async (req, res) => {
   try {
+    const interval = intervalForRole(req.user.role);
+    const params = [];
+    let where = "";
+    if (interval) {
+      where = `WHERE o.created_at >= NOW() - INTERVAL '${interval}'`;
+    }
     const result = await pool.query(
       `SELECT o.*, u.name AS worker_name, c.name AS customer_name
        FROM orders o
        LEFT JOIN users u ON o.user_id = u.user_id
        LEFT JOIN customers c ON o.customer_id = c.customer_id
-       ORDER BY o.created_at DESC`
+       ${where}
+       ORDER BY o.created_at DESC`,
+      params
     );
     res.json(result.rows);
   } catch (err) {

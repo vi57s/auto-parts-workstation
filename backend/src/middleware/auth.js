@@ -12,9 +12,15 @@ const verifyToken = (req, res, next) => {
 };
 
 const verifyAdmin = (req, res, next) => {
-  if (req.user.role !== "admin")
+  if (req.user.role !== "admin" && req.user.role !== "owner")
     return res.status(403).json({ message: "Admin access required" });
   next();
 };
 
-module.exports = { verifyToken, verifyAdmin };
+const verifyOwner = (req, res, next) => {
+  if (req.user.role !== "owner")
+    return res.status(403).json({ message: "Access denied. Owner only." });
+  next();
+};
+
+module.exports = { verifyToken, verifyAdmin, verifyOwner };

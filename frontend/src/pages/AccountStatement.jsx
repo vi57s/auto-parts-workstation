@@ -40,6 +40,7 @@ const texts = {
     totalReturns: 'إجمالي المرتجعات',
     netProfit: 'صافي الربح',
     loading: 'جاري التحميل...',
+    accessDenied: 'ليس لديك صلاحية للوصول',
   },
   en: {
     filters: 'Filters',
@@ -66,6 +67,7 @@ const texts = {
     totalReturns: 'Total Returns',
     netProfit: 'Net Profit',
     loading: 'Loading...',
+    accessDenied: 'Access denied',
   },
 }
 
@@ -80,6 +82,7 @@ function AccountStatement() {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [fetched, setFetched] = useState(false)
+  const [accessError, setAccessError] = useState(false)
 
   const inputStyle = { border: '1.5px solid #d8d4c8', backgroundColor: '#f9f8f4' }
   const handleInputFocus = (e) => {
@@ -94,9 +97,10 @@ function AccountStatement() {
   const runQuery = useCallback(async (from, to, customer) => {
     setLoading(true)
     setFetched(true)
+    setAccessError(false)
     try {
       const [ordersRaw, returnsRaw] = await Promise.all([
-        apiFetch('/orders'),
+        apiFetch('/orders/full-statement'),
         apiFetch('/returns').catch(() => []),
       ])
       const orders = Array.isArray(ordersRaw) ? ordersRaw : Array.isArray(ordersRaw?.data) ? ordersRaw.data : []
@@ -142,7 +146,10 @@ function AccountStatement() {
       }
 
       setData(rows)
-    } catch {
+    } catch (err) {
+      if (err && /Access denied|403/i.test(err.message || '')) {
+        setAccessError(true)
+      }
       setData([])
     } finally {
       setLoading(false)
@@ -228,6 +235,8 @@ function AccountStatement() {
       <div className="bg-white rounded-xl shadow-sm border print:shadow-none" style={{ borderColor: '#dedad0' }}>
         {loading ? (
           <div className="p-8 text-center" style={{ color: '#90887a' }}>{t.loading}</div>
+        ) : accessError ? (
+          <div className="p-8 text-center text-sm" style={{ color: '#9b2626' }}>{t.accessDenied}</div>
         ) : !fetched ? (
           <div className="p-8 text-center text-sm" style={{ color: '#90887a' }}>{t.noData}</div>
         ) : data.length === 0 ? (

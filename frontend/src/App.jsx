@@ -16,7 +16,7 @@ function App() {
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/sales" element={<ProtectedRoute><SalesInvoice /></ProtectedRoute>} />
         <Route path="/returns" element={<ProtectedRoute adminOnly><Returns /></ProtectedRoute>} />
-        <Route path="/statement" element={<ProtectedRoute adminOnly><AccountStatement /></ProtectedRoute>} />
+        <Route path="/statement" element={<ProtectedRoute ownerOnly><AccountStatement /></ProtectedRoute>} />
         <Route path="/inventory" element={<ProtectedRoute adminOnly><Inventory /></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute adminOnly><UserManagement /></ProtectedRoute>} />
       </Routes>
