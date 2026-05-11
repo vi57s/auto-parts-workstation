@@ -18,6 +18,7 @@ function TopBar({ titleKey }) {
       statement: 'كشف الحساب',
       inventory: 'المخزون',
       users: 'المستخدمون',
+      audit: 'سجل النظام',
     },
     en: {
       dashboard: 'Dashboard',
@@ -26,6 +27,7 @@ function TopBar({ titleKey }) {
       statement: 'Account Statement',
       inventory: 'Inventory',
       users: 'User Management',
+      audit: 'Audit Log',
     },
   }
 

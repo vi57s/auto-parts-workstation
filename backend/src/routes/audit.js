@@ -1,0 +1,96 @@
+const express = require('express')
+const pool = require('../config/db')
+const { verifyToken, verifyOwner } = require('../middleware/auth')
+
+const router = express.Router()
+
+router.get('/inventory', verifyToken, verifyOwner, async (req, res) => {
+  const { from, to } = req.query
+  try {
+    let query = 'SELECT * FROM inventory_log WHERE 1=1'
+    const params = []
+    if (from) {
+      params.push(from)
+      query += ` AND performed_at >= $${params.length}`
+    }
+    if (to) {
+      params.push(to + 'T23:59:59')
+      query += ` AND performed_at <= $${params.length}`
+    }
+    query += ' ORDER BY performed_at DESC'
+    const result = await pool.query(query, params)
+    res.json(result.rows)
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+router.get('/sales', verifyToken, verifyOwner, async (req, res) => {
+  const { from, to } = req.query
+  try {
+    let query = `
+      SELECT o.order_id, o.invoice_type, o.total_amount, o.tax, o.created_at,
+             u.name AS worker_name, c.name AS customer_name,
+             COALESCE(
+               json_agg(
+                 json_build_object(
+                   'part_name', sp.part_name,
+                   'serial_number', sp.serial_number,
+                   'quantity', oi.quantity,
+                   'unit_price', oi.unit_price,
+                   'subtotal', oi.subtotal
+                 )
+               ) FILTER (WHERE oi.item_id IS NOT NULL), '[]'
+             ) AS items
+      FROM orders o
+      LEFT JOIN users u ON o.user_id = u.user_id
+      LEFT JOIN customers c ON o.customer_id = c.customer_id
+      LEFT JOIN order_items oi ON o.order_id = oi.order_id
+      LEFT JOIN spare_parts sp ON oi.part_id = sp.part_id
+      WHERE 1=1`
+    const params = []
+    if (from) {
+      params.push(from)
+      query += ` AND o.created_at >= $${params.length}`
+    }
+    if (to) {
+      params.push(to + 'T23:59:59')
+      query += ` AND o.created_at <= $${params.length}`
+    }
+    query += ' GROUP BY o.order_id, u.name, c.name ORDER BY o.created_at DESC'
+    const result = await pool.query(query, params)
+    res.json(result.rows)
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+router.get('/returns', verifyToken, verifyOwner, async (req, res) => {
+  const { from, to } = req.query
+  try {
+    let query = `
+      SELECT r.return_id, r.order_id, r.quantity, r.refund_amount, r.reason,
+             r.return_date, r.admin_name, o.customer_name, o.worker_name,
+             sp.part_name, sp.serial_number
+      FROM returns r
+      LEFT JOIN orders o ON r.order_id = o.order_id
+      LEFT JOIN spare_parts sp ON r.part_id = sp.part_id
+      WHERE 1=1`
+    const params = []
+    if (from) {
+      params.push(from)
+      query += ` AND r.return_date >= $${params.length}`
+    }
+    if (to) {
+      params.push(to + 'T23:59:59')
+      query += ` AND r.return_date <= $${params.length}`
+    }
+    query += ' ORDER BY r.return_date DESC'
+    const result = await pool.query(query, params)
+    res.json(result.rows)
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+module.exports = router

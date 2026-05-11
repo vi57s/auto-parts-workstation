@@ -10,6 +10,7 @@ const ordersRoutes = require("./routes/orders");
 const usersRoutes = require("./routes/users");
 const customersRoutes = require("./routes/customers");
 const returnsRoutes = require("./routes/returns");
+const auditRoutes = require("./routes/audit");
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use("/api/orders", ordersRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/customers", customersRoutes);
 app.use("/api/returns", returnsRoutes);
+app.use("/api/audit", auditRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Auto Parts API is running" });

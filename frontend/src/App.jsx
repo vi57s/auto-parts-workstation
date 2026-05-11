@@ -6,6 +6,7 @@ import Returns from './pages/Returns'
 import AccountStatement from './pages/AccountStatement'
 import Inventory from './pages/Inventory'
 import UserManagement from './pages/UserManagement'
+import AuditLog from './pages/AuditLog'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
         <Route path="/statement" element={<ProtectedRoute ownerOnly><AccountStatement /></ProtectedRoute>} />
         <Route path="/inventory" element={<ProtectedRoute adminOnly><Inventory /></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute adminOnly><UserManagement /></ProtectedRoute>} />
+        <Route path="/audit" element={<ProtectedRoute ownerOnly><AuditLog /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   )

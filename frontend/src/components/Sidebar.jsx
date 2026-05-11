@@ -9,6 +9,7 @@ const texts = {
     statement: 'كشف الحساب',
     inventory: 'المخزون',
     users: 'المستخدمون',
+    audit: 'سجل النظام',
     logout: 'تسجيل الخروج',
     langToggle: 'English',
   },
@@ -19,6 +20,7 @@ const texts = {
     statement: 'Account Statement',
     inventory: 'Inventory',
     users: 'User Management',
+    audit: 'Audit Log',
     logout: 'Logout',
     langToggle: 'عربي',
   },
@@ -93,6 +95,19 @@ const navItems = [
         <circle cx="9" cy="7" r="4" />
         <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+  },
+  {
+    key: 'audit',
+    path: '/audit',
+    ownerOnly: true,
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+        <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+        <line x1="9" y1="12" x2="15" y2="12" />
+        <line x1="9" y1="16" x2="13" y2="16" />
       </svg>
     ),
   },
