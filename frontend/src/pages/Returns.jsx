@@ -87,14 +87,16 @@ function Returns() {
 
   const loadReturnedMap = async (orderId) => {
     try {
-      const raw = await apiFetch('/returns')
-      const list = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : []
+      const meta = await apiFetch(`/orders/${orderId}/returns-meta`)
+      const list = Array.isArray(meta) ? meta : []
       const map = {}
-      for (const r of list) {
-        if (String(r.order_id) !== String(orderId)) continue
-        const pid = r.part_id
-        const qty = parseInt(r.quantity, 10) || 0
-        map[pid] = (map[pid] || 0) + qty
+      for (const ret of list) {
+        const itemsArr = Array.isArray(ret.items) ? ret.items : []
+        for (const item of itemsArr) {
+          const pid = item.part_id
+          const qty = parseInt(item.quantity, 10) || 0
+          map[pid] = (map[pid] || 0) + qty
+        }
       }
       return map
     } catch {
@@ -106,11 +108,10 @@ function Returns() {
     if (!invoiceId.trim()) return
     setSearchError('')
     setMessage({ text: '', type: '' })
+    updateDraft({ order: null, returnedMap: {}, selected: {} })
     try {
-      const raw = invoiceId.trim()
-      const match = raw.match(/^\d{6}-(\d+)$/)
-      const orderId = match ? parseInt(match[1], 10) : raw
-      const data = await apiFetch(`/orders/${orderId}`)
+      const trimmed = invoiceId.trim()
+      const data = await apiFetch(`/orders/by-invoice-number/${encodeURIComponent(trimmed)}`)
       const map = await loadReturnedMap(data.order_id)
       updateDraft({ order: data, returnedMap: map, selected: {} })
     } catch {
@@ -175,16 +176,16 @@ function Returns() {
     setMessage({ text: '', type: '' })
 
     try {
-      for (const [partId, val] of entries) {
-        await apiFetch('/returns', {
-          method: 'POST',
-          body: JSON.stringify({
-            order_id: order.order_id,
+      await apiFetch('/returns', {
+        method: 'POST',
+        body: JSON.stringify({
+          order_id: order.order_id,
+          items: entries.map(([partId, val]) => ({
             part_id: parseInt(partId),
             quantity: val.quantity,
-          }),
-        })
-      }
+          })),
+        }),
+      })
       setMessage({ text: t.success, type: 'success' })
       window.print()
       resetDraft()

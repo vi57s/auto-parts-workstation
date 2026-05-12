@@ -44,8 +44,7 @@ router.get("/statement", verifyToken, verifyOwner, async (req, res) => {
 
 router.post("/sell", verifyToken, async (req, res) => {
   const {
-    serial_number,
-    quantity,
+    items,
     discount = 0,
     invoice_type = "cash",
     customer_id = null,
@@ -53,30 +52,78 @@ router.post("/sell", verifyToken, async (req, res) => {
   } = req.body;
   const user_id = req.user.user_id;
 
-  if (!serial_number || !quantity) {
-    return res.status(400).json({ message: "serial_number and quantity are required" });
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ message: "items array is required" });
   }
-
   if (invoice_type === "credit" && !customer_id) {
     return res.status(400).json({ message: "customer_id is required for credit invoices" });
   }
 
+  await pool.query("BEGIN");
   try {
-    const saleResult = await pool.query(
-      "SELECT * FROM create_sale_by_serial($1, $2, $3, $4, $5, $6, $7)",
-      [serial_number, quantity, user_id, discount, invoice_type, customer_id, tax_rate]
+    const validatedItems = [];
+    for (const item of items) {
+      const { serial_number, quantity } = item;
+      if (!serial_number || !quantity) throw new Error("serial_number and quantity required for each item");
+      const partResult = await pool.query(
+        `SELECT part_id, part_name, price, cost_price, quantity AS stock FROM spare_parts WHERE serial_number = $1`,
+        [serial_number]
+      );
+      if (!partResult.rows.length) throw new Error(`Serial ${serial_number} not found`);
+      const part = partResult.rows[0];
+      if (quantity > part.stock) throw new Error(`Insufficient stock for ${part.part_name}`);
+      const priceAfterDiscount = parseFloat(part.price) * (1 - discount / 100);
+      if (priceAfterDiscount < parseFloat(part.cost_price)) {
+        throw new Error(`Price below cost for ${part.part_name}`);
+      }
+      validatedItems.push({ ...part, qty: quantity });
+    }
+
+    const subtotal = validatedItems.reduce(
+      (sum, i) => sum + parseFloat(i.price) * i.qty * (1 - discount / 100), 0
     );
-    const row = saleResult.rows[0];
-    const newOrderId = row.order_id;
+    const taxAmount = subtotal * (tax_rate / 100);
+    const total = subtotal + taxAmount;
+
+    const orderResult = await pool.query(
+      `INSERT INTO orders (status, total_amount, user_id, discount, invoice_type, customer_id, tax)
+       VALUES ('Completed', $1, $2, $3, $4, $5, $6)
+       RETURNING order_id`,
+      [total, user_id, discount, invoice_type, customer_id || null, taxAmount]
+    );
+    const orderId = orderResult.rows[0].order_id;
+
+    for (const item of validatedItems) {
+      await pool.query(
+        `INSERT INTO order_items (order_id, part_id, quantity, unit_price) VALUES ($1, $2, $3, $4)`,
+        [orderId, item.part_id, item.qty, item.price]
+      );
+      await pool.query(
+        `UPDATE spare_parts SET quantity = quantity - $1 WHERE part_id = $2`,
+        [item.qty, item.part_id]
+      );
+    }
+
     const today = new Date();
     const datePart = String(today.getFullYear()).slice(2) + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
     const countResult = await pool.query(`SELECT COUNT(*) FROM orders WHERE DATE(created_at) = CURRENT_DATE`);
     const dailySeq = String(parseInt(countResult.rows[0].count)).padStart(2, '0');
     const invoiceNumber = `${datePart}-${dailySeq}`;
-    await pool.query(`UPDATE orders SET invoice_number = $1 WHERE order_id = $2`, [invoiceNumber, newOrderId]);
-    res.json({ ...row, invoice_number: invoiceNumber });
+    await pool.query(`UPDATE orders SET invoice_number = $1 WHERE order_id = $2`, [invoiceNumber, orderId]);
+
+    await pool.query("COMMIT");
+
+    res.json({
+      order_id: orderId,
+      invoice_number: invoiceNumber,
+      total_amount: total,
+      tax: taxAmount,
+      discount,
+      invoice_type,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    await pool.query("ROLLBACK");
+    res.status(400).json({ message: err.message });
   }
 });
 
@@ -116,19 +163,55 @@ router.get("/next-invoice-number", verifyToken, async (req, res) => {
   }
 });
 
+router.get("/by-invoice-number/:invoiceNumber", verifyToken, async (req, res) => {
+  const { invoiceNumber } = req.params;
+  try {
+    const orderResult = await pool.query(
+      `SELECT o.*, u.name AS worker_name, c.name AS customer_name, c.phone AS customer_phone, c.customer_type
+       FROM orders o
+       LEFT JOIN users u ON o.user_id = u.user_id
+       LEFT JOIN customers c ON o.customer_id = c.customer_id
+       WHERE o.invoice_number = $1`,
+      [invoiceNumber]
+    );
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+    const order = orderResult.rows[0];
+    const itemsResult = await pool.query(
+      `SELECT oi.*, sp.part_name, sp.serial_number
+       FROM order_items oi
+       LEFT JOIN spare_parts sp ON oi.part_id = sp.part_id
+       WHERE oi.order_id = $1`,
+      [order.order_id]
+    );
+    res.json({ ...order, items: itemsResult.rows });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.get("/:id/returns-meta", verifyToken, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
-      `SELECT r.return_id, r.quantity, r.part_id, r.return_date, u.name AS approver_name
+      `SELECT
+         r.return_id,
+         r.return_date,
+         u.name AS approver_name,
+         SUM(ri.quantity) AS total_quantity,
+         json_agg(json_build_object('part_id', ri.part_id, 'quantity', ri.quantity)) AS items
        FROM returns r
        LEFT JOIN users u ON r.admin_id = u.user_id
+       JOIN return_items ri ON ri.return_id = r.return_id
        WHERE r.order_id = $1
+       GROUP BY r.return_id, r.return_date, u.name
        ORDER BY r.return_date DESC`,
       [id]
     );
     res.json(result.rows);
   } catch (err) {
+    console.error('[orders GET /:id/returns-meta] error:', err.message, err.stack);
     res.status(500).json({ message: err.message });
   }
 });
@@ -149,9 +232,10 @@ router.get("/:id/details", verifyToken, async (req, res) => {
              'quantity_sold', oi.quantity,
              'unit_price', oi.unit_price,
              'quantity_returned', COALESCE((
-               SELECT SUM(r.quantity)
-               FROM returns r
-               WHERE r.order_id = o.order_id AND r.part_id = oi.part_id
+               SELECT SUM(ri.quantity)
+               FROM returns ret
+               JOIN return_items ri ON ri.return_id = ret.return_id
+               WHERE ret.order_id = o.order_id AND ri.part_id = oi.part_id
              ), 0)
            )
          ) AS items
@@ -169,6 +253,7 @@ router.get("/:id/details", verifyToken, async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (err) {
+    console.error('[orders GET /:id/details] error:', err.message, err.stack);
     res.status(500).json({ message: err.message });
   }
 });

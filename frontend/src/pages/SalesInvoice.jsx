@@ -273,21 +273,17 @@ function SalesInvoice() {
         }
       }
 
-      let confirmedNum = null
-      for (const item of items) {
-        const result = await apiFetch('/orders/sell', {
-          method: 'POST',
-          body: JSON.stringify({
-            serial_number: item.serial_number,
-            quantity: item.quantity,
-            discount: item.discount_percentage,
-            invoice_type: invoiceType,
-            customer_id: resolvedCustomerId,
-            tax_rate: taxRate,
-          }),
-        })
-        if (!confirmedNum && result?.invoice_number) confirmedNum = result.invoice_number
-      }
+      const result = await apiFetch('/orders/sell', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: items.map(i => ({ serial_number: i.serial_number, quantity: i.quantity })),
+          discount: items[0]?.discount_percentage ?? 0,
+          invoice_type: invoiceType,
+          customer_id: resolvedCustomerId,
+          tax_rate: taxRate,
+        }),
+      })
+      const confirmedNum = result?.invoice_number || null
 
       flushSync(() => {
         if (confirmedNum) setInvoiceNumber(confirmedNum)

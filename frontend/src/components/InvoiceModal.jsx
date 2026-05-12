@@ -230,7 +230,7 @@ function InvoiceModal({ orderId, onClose, lang }) {
                       {returnsMeta.map((ret, i) => (
                         <tr key={i} className="border-b" style={{ borderColor: '#ede9e0' }}>
                           <td className="px-2 py-1.5 border" style={{ borderColor: '#ede9e0' }}>{ret.return_id}</td>
-                          <td className="px-2 py-1.5 border" style={{ borderColor: '#ede9e0', color: '#9b2626' }}>{ret.quantity}</td>
+                          <td className="px-2 py-1.5 border" style={{ borderColor: '#ede9e0', color: '#9b2626' }}>{ret.total_quantity}</td>
                           <td className="px-2 py-1.5 border" style={{ borderColor: '#ede9e0' }}>{ret.approver_name || '—'}</td>
                           <td className="px-2 py-1.5 border" style={{ borderColor: '#ede9e0' }}>{ret.return_date ? new Date(ret.return_date).toLocaleDateString() : '—'}</td>
                         </tr>

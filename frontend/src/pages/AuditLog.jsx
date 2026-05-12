@@ -605,7 +605,9 @@ function AuditLog() {
                       style={{ borderColor: "#ede9e0" }}
                       onClick={() => setSelectedOrderId(row.order_id)}
                     >
-                      <td className="px-3 py-2 font-mono text-xs">{row.invoice_number || row.order_id}</td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {row.invoice_number || row.order_id}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-1">
                           <span
@@ -723,13 +725,19 @@ function AuditLog() {
                       onClick={() => setSelectedOrderId(row.order_id)}
                     >
                       <td className="px-3 py-2">{row.return_id}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{row.invoice_number || row.order_id}</td>
-                      <td className="px-3 py-2">{row.part_name || "—"}</td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {row.invoice_number || row.order_id}
+                      </td>
+                      <td className="px-3 py-2">
+                        {Array.isArray(row.items)
+                          ? row.items.map((i) => i.part_name).filter(Boolean).join(', ') || '—'
+                          : '—'}
+                      </td>
                       <td className="px-3 py-2">{row.quantity}</td>
                       <td className="px-3 py-2 text-red-600 font-medium">
                         {parseFloat(row.refund_amount || 0).toFixed(2)}
                       </td>
-                      <td className="px-3 py-2">{row.admin_name || "—"}</td>
+                      <td className="px-3 py-2">{row.approver_name || "—"}</td>
                       <td className="px-3 py-2">
                         {row.return_date
                           ? new Date(row.return_date).toLocaleDateString()
