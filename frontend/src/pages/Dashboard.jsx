@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import Layout from '../components/Layout'
 import { useLang } from '../utils/lang'
 import { apiFetch } from '../utils/api'
+import InvoiceModal from '../components/InvoiceModal'
 
 const texts = {
   ar: {
@@ -69,6 +70,7 @@ function Dashboard() {
   const [returnsByOrder, setReturnsByOrder] = useState({})
   const [loading, setLoading] = useState(true)
   const [accessDeniedToast, setAccessDeniedToast] = useState(false)
+  const [selectedOrderId, setSelectedOrderId] = useState(null)
 
   useEffect(() => {
     try {
@@ -102,7 +104,7 @@ function Dashboard() {
         for (const r of returns) {
           const oid = r.order_id
           if (!byOrder[oid]) byOrder[oid] = { refund: 0, qty: 0 }
-          byOrder[oid].refund += parseFloat(r.refund_amount || 0)
+          byOrder[oid].refund += parseFloat(r.correct_refund_amount ?? r.refund_amount ?? 0)
           byOrder[oid].qty += parseInt(r.quantity || 0, 10)
         }
 
@@ -110,13 +112,13 @@ function Dashboard() {
         const todayRevenue = todayOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
         const todayReturnRefund = returns
           .filter((r) => r.return_date && r.return_date.startsWith(today))
-          .reduce((sum, r) => sum + parseFloat(r.refund_amount || 0), 0)
+          .reduce((sum, r) => sum + parseFloat(r.correct_refund_amount ?? r.refund_amount ?? 0), 0)
 
         setStats({
           salesCount: todayOrders.length,
           revenue: Math.max(0, todayRevenue - todayReturnRefund),
           totalParts: parts.reduce((sum, p) => sum + (p.quantity || 0), 0),
-          lowStock: parts.filter((p) => p.quantity <= 5).length,
+          lowStock: parts.filter((p) => p.quantity <= 10).length,
         })
 
         setReturnsByOrder(byOrder)
@@ -241,7 +243,7 @@ function Dashboard() {
                   const fullyReturned = refund > 0 && refund >= total - 0.01
                   const partiallyReturned = refund > 0 && !fullyReturned
                   return (
-                    <tr key={order.order_id} className="border-b hover:bg-[#fdf9f9]" style={{ borderColor: '#ede9e0' }}>
+                    <tr key={order.order_id} className="border-b hover:bg-[#fdf9f9] cursor-pointer" style={{ borderColor: '#ede9e0' }} onClick={() => setSelectedOrderId(order.order_id)}>
                       <td className="px-4 py-3">{order.order_id}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-1">
@@ -289,6 +291,12 @@ function Dashboard() {
           {t.accessDenied}
         </div>
       )}
+
+      <InvoiceModal
+        orderId={selectedOrderId}
+        onClose={() => setSelectedOrderId(null)}
+        lang={lang}
+      />
     </Layout>
   )
 }

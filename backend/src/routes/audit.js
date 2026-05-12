@@ -19,8 +19,10 @@ router.get('/inventory', verifyToken, verifyOwner, async (req, res) => {
     }
     query += ' ORDER BY performed_at DESC'
     const result = await pool.query(query, params)
+    console.log(`[audit/inventory] returned ${result.rows.length} rows`)
     res.json(result.rows)
   } catch (err) {
+    console.error('[audit/inventory] error:', err.message)
     res.status(500).json({ message: err.message })
   }
 })
@@ -29,7 +31,7 @@ router.get('/sales', verifyToken, verifyOwner, async (req, res) => {
   const { from, to } = req.query
   try {
     let query = `
-      SELECT o.order_id, o.invoice_type, o.total_amount, o.tax, o.created_at,
+      SELECT o.order_id, o.invoice_type, o.total_amount, o.tax, o.discount, o.created_at,
              u.name AS worker_name, c.name AS customer_name,
              COALESCE(
                json_agg(
@@ -37,11 +39,16 @@ router.get('/sales', verifyToken, verifyOwner, async (req, res) => {
                    'part_name', sp.part_name,
                    'serial_number', sp.serial_number,
                    'quantity', oi.quantity,
-                   'unit_price', oi.unit_price,
-                   'subtotal', oi.subtotal
+                   'unit_price', oi.unit_price
                  )
                ) FILTER (WHERE oi.item_id IS NOT NULL), '[]'
-             ) AS items
+             ) AS items,
+             CASE
+               WHEN COALESCE((SELECT SUM(rr.quantity) FROM returns rr WHERE rr.order_id = o.order_id), 0) = 0 THEN 'none'
+               WHEN COALESCE((SELECT SUM(rr.quantity) FROM returns rr WHERE rr.order_id = o.order_id), 0)
+                 >= COALESCE((SELECT SUM(oi2.quantity) FROM order_items oi2 WHERE oi2.order_id = o.order_id), 0) THEN 'full'
+               ELSE 'partial'
+             END AS returns_status
       FROM orders o
       LEFT JOIN users u ON o.user_id = u.user_id
       LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -57,10 +64,12 @@ router.get('/sales', verifyToken, verifyOwner, async (req, res) => {
       params.push(to + 'T23:59:59')
       query += ` AND o.created_at <= $${params.length}`
     }
-    query += ' GROUP BY o.order_id, u.name, c.name ORDER BY o.created_at DESC'
+    query += ' GROUP BY o.order_id, o.invoice_type, o.total_amount, o.tax, o.discount, o.created_at, u.name, c.name ORDER BY o.created_at DESC'
     const result = await pool.query(query, params)
+    console.log(`[audit/sales] returned ${result.rows.length} rows`)
     res.json(result.rows)
   } catch (err) {
+    console.error('[audit/sales] error:', err.message)
     res.status(500).json({ message: err.message })
   }
 })
@@ -69,11 +78,18 @@ router.get('/returns', verifyToken, verifyOwner, async (req, res) => {
   const { from, to } = req.query
   try {
     let query = `
-      SELECT r.return_id, r.order_id, r.quantity, r.refund_amount, r.reason,
-             r.return_date, r.admin_name, o.customer_name, o.worker_name,
-             sp.part_name, sp.serial_number
+      SELECT r.return_id, r.order_id, r.quantity, r.refund_amount,
+             r.return_date,
+             u.name AS admin_name,
+             c.name AS customer_name,
+             seller.name AS worker_name,
+             sp.part_name, sp.serial_number,
+             o.discount
       FROM returns r
       LEFT JOIN orders o ON r.order_id = o.order_id
+      LEFT JOIN users u ON r.admin_id = u.user_id
+      LEFT JOIN users seller ON o.user_id = seller.user_id
+      LEFT JOIN customers c ON o.customer_id = c.customer_id
       LEFT JOIN spare_parts sp ON r.part_id = sp.part_id
       WHERE 1=1`
     const params = []
@@ -87,8 +103,10 @@ router.get('/returns', verifyToken, verifyOwner, async (req, res) => {
     }
     query += ' ORDER BY r.return_date DESC'
     const result = await pool.query(query, params)
+    console.log(`[audit/returns] returned ${result.rows.length} rows`)
     res.json(result.rows)
   } catch (err) {
+    console.error('[audit/returns] error:', err.message)
     res.status(500).json({ message: err.message })
   }
 })

@@ -93,6 +93,62 @@ router.get("/", verifyToken, async (req, res) => {
   }
 });
 
+router.get("/:id/returns-meta", verifyToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT r.return_id, r.quantity, r.part_id, r.return_date, u.name AS approver_name
+       FROM returns r
+       LEFT JOIN users u ON r.admin_id = u.user_id
+       WHERE r.order_id = $1
+       ORDER BY r.return_date DESC`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get("/:id/details", verifyToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT
+         o.order_id, o.created_at, o.invoice_type, o.discount, o.tax, o.total_amount,
+         u.name AS seller_name, c.name AS customer_name,
+         json_agg(
+           json_build_object(
+             'part_id', oi.part_id,
+             'part_name', sp.part_name,
+             'serial_number', sp.serial_number,
+             'quantity_sold', oi.quantity,
+             'unit_price', oi.unit_price,
+             'quantity_returned', COALESCE((
+               SELECT SUM(r.quantity)
+               FROM returns r
+               WHERE r.order_id = o.order_id AND r.part_id = oi.part_id
+             ), 0)
+           )
+         ) AS items
+       FROM orders o
+       LEFT JOIN users u ON o.user_id = u.user_id
+       LEFT JOIN customers c ON o.customer_id = c.customer_id
+       JOIN order_items oi ON oi.order_id = o.order_id
+       JOIN spare_parts sp ON sp.part_id = oi.part_id
+       WHERE o.order_id = $1
+       GROUP BY o.order_id, o.created_at, o.invoice_type, o.discount, o.tax, o.total_amount, u.name, c.name`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.get("/:id", verifyToken, async (req, res) => {
   const { id } = req.params;
   try {

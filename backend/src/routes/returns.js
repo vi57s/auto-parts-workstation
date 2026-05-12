@@ -37,11 +37,26 @@ router.get("/", verifyToken, async (req, res) => {
       where = `WHERE r.return_date >= NOW() - INTERVAL '${interval}'`;
     }
     const result = await pool.query(
-      `SELECT r.*, u.name AS admin_name, sp.part_name, sp.serial_number, o.total_amount AS order_total, o.status AS order_status
+      `SELECT r.*, u.name AS admin_name, sp.part_name, sp.serial_number,
+              o.total_amount AS order_total, o.status AS order_status,
+              r.quantity
+                * COALESCE(oi.unit_price, 0)
+                * (1 - COALESCE(o.discount, 0)::numeric / 100)
+                * (1 + CASE
+                    WHEN sub.subtotal_after_discount > 0
+                    THEN COALESCE(o.tax, 0)::numeric / sub.subtotal_after_discount
+                    ELSE 0
+                  END) AS correct_refund_amount
        FROM returns r
        LEFT JOIN users u ON r.admin_id = u.user_id
        LEFT JOIN spare_parts sp ON r.part_id = sp.part_id
        LEFT JOIN orders o ON r.order_id = o.order_id
+       LEFT JOIN order_items oi ON oi.order_id = r.order_id AND oi.part_id = r.part_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(oi2.quantity * oi2.unit_price), 0) * (1 - COALESCE(o.discount, 0)::numeric / 100) AS subtotal_after_discount
+         FROM order_items oi2
+         WHERE oi2.order_id = r.order_id
+       ) sub ON true
        ${where}
        ORDER BY r.return_date DESC`
     );

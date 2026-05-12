@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Layout from '../components/Layout'
 import { useLang } from '../utils/lang'
 import { apiFetch } from '../utils/api'
+import InvoiceModal from '../components/InvoiceModal'
 
 function toDateString(d) {
   return d.toISOString().split('T')[0]
@@ -83,6 +84,7 @@ function AccountStatement() {
   const [loading, setLoading] = useState(true)
   const [fetched, setFetched] = useState(false)
   const [accessError, setAccessError] = useState(false)
+  const [selectedOrderId, setSelectedOrderId] = useState(null)
 
   const inputStyle = { border: '1.5px solid #d8d4c8', backgroundColor: '#f9f8f4' }
   const handleInputFocus = (e) => {
@@ -112,7 +114,7 @@ function AccountStatement() {
         if (!returnsByOrder[oid]) {
           returnsByOrder[oid] = { total: 0, approvers: new Set() }
         }
-        returnsByOrder[oid].total += parseFloat(r.refund_amount || 0)
+        returnsByOrder[oid].total += parseFloat(r.correct_refund_amount ?? r.refund_amount ?? 0)
         if (r.admin_name) returnsByOrder[oid].approvers.add(r.admin_name)
       }
 
@@ -263,7 +265,7 @@ function AccountStatement() {
                   const total = parseFloat(row.total_amount || 0)
                   const refund = parseFloat(row.refund_amount || 0)
                   return (
-                    <tr key={i} className="border-b hover:bg-[#fdf9f9]" style={{ borderColor: '#ede9e0' }}>
+                    <tr key={i} className="border-b hover:bg-[#fdf9f9] cursor-pointer" style={{ borderColor: '#ede9e0' }} onClick={() => setSelectedOrderId(row.order_id)}>
                       <td className="px-3 py-2">{row.order_id}</td>
                       <td className="px-3 py-2">
                         <span
@@ -302,6 +304,12 @@ function AccountStatement() {
           </div>
         )}
       </div>
+
+      <InvoiceModal
+        orderId={selectedOrderId}
+        onClose={() => setSelectedOrderId(null)}
+        lang={lang}
+      />
     </Layout>
   )
 }

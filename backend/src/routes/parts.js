@@ -45,6 +45,78 @@ router.get("/", verifyToken, async (req, res) => {
   }
 });
 
+router.get("/depleting-soon", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         sp.part_id,
+         sp.serial_number,
+         sp.part_name,
+         sp.quantity AS current_stock,
+         sp.location,
+         sp.price,
+         sp.cost_price,
+         sp.created_at,
+         COALESCE(SUM(oi.quantity), 0) AS sold_last_30_days,
+         ROUND(COALESCE(SUM(oi.quantity), 0)::numeric / 30, 2) AS daily_rate,
+         ROUND(sp.quantity::numeric / (COALESCE(SUM(oi.quantity), 0)::numeric / 30), 1) AS days_until_depletion
+       FROM spare_parts sp
+       LEFT JOIN order_items oi ON oi.part_id = sp.part_id
+       LEFT JOIN orders o ON o.order_id = oi.order_id
+         AND o.created_at >= NOW() - INTERVAL '30 days'
+       GROUP BY sp.part_id, sp.serial_number, sp.part_name, sp.quantity, sp.location, sp.price, sp.cost_price, sp.created_at
+       HAVING
+         COALESCE(SUM(oi.quantity), 0) > 0
+         AND ROUND(sp.quantity::numeric / (COALESCE(SUM(oi.quantity), 0)::numeric / 30), 1) <= 14
+       ORDER BY days_until_depletion ASC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get("/:id/sales", verifyToken, async (req, res) => {
+  const { id } = req.params
+  const to = new Date()
+  const from = new Date()
+  from.setDate(from.getDate() - 30)
+  const dateFrom = req.query.from || from.toISOString().split('T')[0]
+  const dateTo = req.query.to || to.toISOString().split('T')[0]
+  const dateToEnd = dateTo + 'T23:59:59'
+
+  try {
+    const soldRes = await pool.query(
+      `SELECT COALESCE(SUM(oi.quantity), 0) AS total_sold
+       FROM order_items oi
+       JOIN orders o ON o.order_id = oi.order_id
+       WHERE oi.part_id = $1
+         AND o.created_at >= $2
+         AND o.created_at <= $3`,
+      [id, dateFrom, dateToEnd]
+    )
+    const returnedRes = await pool.query(
+      `SELECT COALESCE(SUM(quantity), 0) AS total_returned
+       FROM returns
+       WHERE part_id = $1
+         AND return_date >= $2
+         AND return_date <= $3`,
+      [id, dateFrom, dateToEnd]
+    )
+    const total_sold = parseInt(soldRes.rows[0].total_sold, 10)
+    const total_returned = parseInt(returnedRes.rows[0].total_returned, 10)
+    res.json({
+      total_sold,
+      total_returned,
+      net_sold: total_sold - total_returned,
+      from: dateFrom,
+      to: dateTo,
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 router.post("/", verifyToken, verifyAdmin, async (req, res) => {
   const { serial_number, part_name, location, quantity, price, cost_price } = req.body;
   const admin_id = req.user.user_id;

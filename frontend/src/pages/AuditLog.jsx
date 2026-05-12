@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Layout from '../components/Layout'
 import { useLang } from '../utils/lang'
 import { apiFetch } from '../utils/api'
+import InvoiceModal from '../components/InvoiceModal'
 
 function toDateString(d) {
   return d.toISOString().split('T')[0]
@@ -51,21 +52,22 @@ const texts = {
     customer: 'العميل',
     total: 'الإجمالي',
     tax: 'الضريبة',
+    discount: 'الخصم',
     seller: 'البائع',
     cash: 'نقدي',
     credit: 'آجل',
+    partiallyReturned: 'مرتجع جزئياً',
+    fullyReturned: 'مرتجع بالكامل',
     items: 'المنتجات',
     itemName: 'الاسم',
     itemQty: 'الكمية',
     itemPrice: 'سعر الوحدة',
-    itemSubtotal: 'المجموع',
 
     // returns columns
     returnId: 'رقم المرتجع',
     orderId: 'رقم الطلب',
     qty: 'الكمية',
     refund: 'المبلغ المسترد',
-    reason: 'السبب',
     approver: 'المسؤول',
   },
   en: {
@@ -102,20 +104,21 @@ const texts = {
     customer: 'Customer',
     total: 'Total',
     tax: 'Tax',
+    discount: 'Discount',
     seller: 'Seller',
     cash: 'Cash',
     credit: 'Credit',
+    partiallyReturned: 'Partially Returned',
+    fullyReturned: 'Fully Returned',
     items: 'Items',
     itemName: 'Name',
     itemQty: 'Qty',
     itemPrice: 'Unit Price',
-    itemSubtotal: 'Subtotal',
 
     returnId: 'Return #',
     orderId: 'Order #',
     qty: 'Qty',
     refund: 'Refund',
-    reason: 'Reason',
     approver: 'Approver',
   },
 }
@@ -129,7 +132,7 @@ function actionStyle(action) {
   return {}
 }
 
-function DetailModal({ row, tab, t, lang, onClose }) {
+function DetailModal({ row, t, lang, onClose }) {
   if (!row) return null
   const isRTL = lang === 'ar'
 
@@ -153,143 +156,75 @@ function DetailModal({ row, tab, t, lang, onClose }) {
           </button>
         </div>
 
-        {tab === 'inventory' && (
-          <div className="space-y-3 text-sm">
-            <div className="flex gap-2 flex-wrap">
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={actionStyle(row.action_type)}>
-                {t[row.action_type]}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1" style={{ color: '#18160f' }}>
-              <span style={{ color: '#90887a' }}>{t.part}:</span><span>{row.part_name}</span>
-              <span style={{ color: '#90887a' }}>{t.serial}:</span><span className="font-mono text-xs">{row.serial_number}</span>
-              <span style={{ color: '#90887a' }}>{t.performedBy}:</span><span>{row.performed_by_name}</span>
-              <span style={{ color: '#90887a' }}>{t.date}:</span><span>{row.performed_at ? new Date(row.performed_at).toLocaleString() : '—'}</span>
-            </div>
-
-            {row.action_type === 'edit' && (() => {
-              const ch = row.changes || {}
-              const keys = Object.keys(ch)
-              if (keys.length === 0) return <p style={{ color: '#90887a' }}>{t.noChanges}</p>
-              return (
-                <div>
-                  <p className="font-semibold mb-1" style={{ color: '#18160f' }}>{t.changes}</p>
-                  <table className="w-full text-xs border-collapse">
-                    <thead>
-                      <tr style={{ backgroundColor: '#f9f8f4' }}>
-                        <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.field}</th>
-                        <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.from_val}</th>
-                        <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.to_val}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {keys.map((k) => (
-                        <tr key={k} className="border-b" style={{ borderColor: '#ede9e0' }}>
-                          <td className="px-2 py-1 border font-mono" style={{ borderColor: '#ede9e0' }}>{k}</td>
-                          <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0', color: '#9b2626' }}>{String(ch[k].from)}</td>
-                          <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0', color: '#166534' }}>{String(ch[k].to)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            })()}
-
-            {(row.action_type === 'add' || row.action_type === 'delete') && (() => {
-              const ch = row.changes || {}
-              const keys = Object.keys(ch)
-              if (keys.length === 0) return null
-              return (
-                <div>
-                  <p className="font-semibold mb-1" style={{ color: '#18160f' }}>{t.value}</p>
-                  <table className="w-full text-xs border-collapse">
-                    <thead>
-                      <tr style={{ backgroundColor: '#f9f8f4' }}>
-                        <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.field}</th>
-                        <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.value}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {keys.map((k) => (
-                        <tr key={k} className="border-b" style={{ borderColor: '#ede9e0' }}>
-                          <td className="px-2 py-1 border font-mono" style={{ borderColor: '#ede9e0' }}>{k}</td>
-                          <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0' }}>{String(ch[k])}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            })()}
+        <div className="space-y-3 text-sm">
+          <div className="flex gap-2 flex-wrap">
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={actionStyle(row.action_type)}>
+              {t[row.action_type]}
+            </span>
           </div>
-        )}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1" style={{ color: '#18160f' }}>
+            <span style={{ color: '#90887a' }}>{t.part}:</span><span>{row.part_name}</span>
+            <span style={{ color: '#90887a' }}>{t.serial}:</span><span className="font-mono text-xs">{row.serial_number}</span>
+            <span style={{ color: '#90887a' }}>{t.performedBy}:</span><span>{row.performed_by_name}</span>
+            <span style={{ color: '#90887a' }}>{t.date}:</span><span>{row.performed_at ? new Date(row.performed_at).toLocaleString() : '—'}</span>
+          </div>
 
-        {tab === 'sales' && (
-          <div className="space-y-3 text-sm">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1" style={{ color: '#18160f' }}>
-              <span style={{ color: '#90887a' }}>{t.invoice}:</span><span>{row.order_id}</span>
-              <span style={{ color: '#90887a' }}>{t.type}:</span>
-              <span>
-                <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{
-                  backgroundColor: row.invoice_type === 'cash' ? '#e6f9e6' : '#fff3e6',
-                  color: row.invoice_type === 'cash' ? '#166534' : '#9a3412',
-                }}>
-                  {row.invoice_type === 'cash' ? t.cash : t.credit}
-                </span>
-              </span>
-              <span style={{ color: '#90887a' }}>{t.customer}:</span><span>{row.customer_name || '—'}</span>
-              <span style={{ color: '#90887a' }}>{t.total}:</span><span className="font-medium">{parseFloat(row.total_amount || 0).toFixed(2)}</span>
-              <span style={{ color: '#90887a' }}>{t.tax}:</span><span>{parseFloat(row.tax || 0).toFixed(2)}</span>
-              <span style={{ color: '#90887a' }}>{t.seller}:</span><span>{row.worker_name || '—'}</span>
-              <span style={{ color: '#90887a' }}>{t.date}:</span><span>{row.created_at ? new Date(row.created_at).toLocaleString() : '—'}</span>
-            </div>
-
-            {Array.isArray(row.items) && row.items.length > 0 && (
+          {row.action_type === 'edit' && (() => {
+            const ch = row.changes || {}
+            const keys = Object.keys(ch)
+            if (keys.length === 0) return <p style={{ color: '#90887a' }}>{t.noChanges}</p>
+            return (
               <div>
-                <p className="font-semibold mb-1" style={{ color: '#18160f' }}>{t.items}</p>
+                <p className="font-semibold mb-1" style={{ color: '#18160f' }}>{t.changes}</p>
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr style={{ backgroundColor: '#f9f8f4' }}>
-                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.itemName}</th>
-                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.itemQty}</th>
-                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.itemPrice}</th>
-                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.itemSubtotal}</th>
+                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.field}</th>
+                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.from_val}</th>
+                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.to_val}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {row.items.map((item, i) => (
-                      <tr key={i} className="border-b" style={{ borderColor: '#ede9e0' }}>
-                        <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0' }}>{item.part_name || '—'}</td>
-                        <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0' }}>{item.quantity}</td>
-                        <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0' }}>{parseFloat(item.unit_price || 0).toFixed(2)}</td>
-                        <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0' }}>{parseFloat(item.subtotal || 0).toFixed(2)}</td>
+                    {keys.map((k) => (
+                      <tr key={k} className="border-b" style={{ borderColor: '#ede9e0' }}>
+                        <td className="px-2 py-1 border font-mono" style={{ borderColor: '#ede9e0' }}>{k}</td>
+                        <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0', color: '#9b2626' }}>{String(ch[k].from)}</td>
+                        <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0', color: '#166534' }}>{String(ch[k].to)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
-        )}
+            )
+          })()}
 
-        {tab === 'returns' && (
-          <div className="space-y-2 text-sm">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1" style={{ color: '#18160f' }}>
-              <span style={{ color: '#90887a' }}>{t.returnId}:</span><span>{row.return_id}</span>
-              <span style={{ color: '#90887a' }}>{t.orderId}:</span><span>{row.order_id}</span>
-              <span style={{ color: '#90887a' }}>{t.part}:</span><span>{row.part_name || '—'}</span>
-              <span style={{ color: '#90887a' }}>{t.serial}:</span><span className="font-mono text-xs">{row.serial_number || '—'}</span>
-              <span style={{ color: '#90887a' }}>{t.customer}:</span><span>{row.customer_name || '—'}</span>
-              <span style={{ color: '#90887a' }}>{t.seller}:</span><span>{row.worker_name || '—'}</span>
-              <span style={{ color: '#90887a' }}>{t.qty}:</span><span>{row.quantity}</span>
-              <span style={{ color: '#90887a' }}>{t.refund}:</span><span className="text-red-600 font-medium">{parseFloat(row.refund_amount || 0).toFixed(2)}</span>
-              <span style={{ color: '#90887a' }}>{t.reason}:</span><span>{row.reason || '—'}</span>
-              <span style={{ color: '#90887a' }}>{t.approver}:</span><span>{row.admin_name || '—'}</span>
-              <span style={{ color: '#90887a' }}>{t.date}:</span><span>{row.return_date ? new Date(row.return_date).toLocaleString() : '—'}</span>
-            </div>
-          </div>
-        )}
+          {(row.action_type === 'add' || row.action_type === 'delete') && (() => {
+            const ch = row.changes || {}
+            const keys = Object.keys(ch)
+            if (keys.length === 0) return null
+            return (
+              <div>
+                <p className="font-semibold mb-1" style={{ color: '#18160f' }}>{t.value}</p>
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr style={{ backgroundColor: '#f9f8f4' }}>
+                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.field}</th>
+                      <th className="px-2 py-1 text-start border" style={{ borderColor: '#ede9e0', color: '#18160f' }}>{t.value}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {keys.map((k) => (
+                      <tr key={k} className="border-b" style={{ borderColor: '#ede9e0' }}>
+                        <td className="px-2 py-1 border font-mono" style={{ borderColor: '#ede9e0' }}>{k}</td>
+                        <td className="px-2 py-1 border" style={{ borderColor: '#ede9e0' }}>{String(ch[k])}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
+        </div>
 
         <button
           onClick={onClose}
@@ -315,6 +250,7 @@ function AuditLog() {
   const [data, setData] = useState({ inventory: [], sales: [], returns: [] })
   const [loading, setLoading] = useState(false)
   const [selectedRow, setSelectedRow] = useState(null)
+  const [selectedOrderId, setSelectedOrderId] = useState(null)
 
   const inputStyle = { border: '1.5px solid #d8d4c8', backgroundColor: '#f9f8f4' }
   const handleInputFocus = (e) => {
@@ -474,16 +410,28 @@ function AuditLog() {
                       key={row.order_id}
                       className="border-b hover:bg-[#fdf9f9] cursor-pointer"
                       style={{ borderColor: '#ede9e0' }}
-                      onClick={() => setSelectedRow(row)}
+                      onClick={() => setSelectedOrderId(row.order_id)}
                     >
                       <td className="px-3 py-2">{row.order_id}</td>
                       <td className="px-3 py-2">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{
-                          backgroundColor: row.invoice_type === 'cash' ? '#e6f9e6' : '#fff3e6',
-                          color: row.invoice_type === 'cash' ? '#166534' : '#9a3412',
-                        }}>
-                          {row.invoice_type === 'cash' ? t.cash : t.credit}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{
+                            backgroundColor: row.invoice_type === 'cash' ? '#e6f9e6' : '#fff3e6',
+                            color: row.invoice_type === 'cash' ? '#166534' : '#9a3412',
+                          }}>
+                            {row.invoice_type === 'cash' ? t.cash : t.credit}
+                          </span>
+                          {row.returns_status === 'full' && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#fde2e2', color: '#9b2626' }}>
+                              {t.fullyReturned}
+                            </span>
+                          )}
+                          {row.returns_status === 'partial' && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#fff3e6', color: '#9a3412' }}>
+                              {t.partiallyReturned}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2">{row.customer_name || '—'}</td>
                       <td className="px-3 py-2 font-medium">{parseFloat(row.total_amount || 0).toFixed(2)}</td>
@@ -515,7 +463,7 @@ function AuditLog() {
                       key={row.return_id}
                       className="border-b hover:bg-[#fdf9f9] cursor-pointer"
                       style={{ borderColor: '#ede9e0' }}
-                      onClick={() => setSelectedRow(row)}
+                      onClick={() => setSelectedOrderId(row.order_id)}
                     >
                       <td className="px-3 py-2">{row.return_id}</td>
                       <td className="px-3 py-2">{row.order_id}</td>
@@ -536,12 +484,17 @@ function AuditLog() {
       {selectedRow && (
         <DetailModal
           row={selectedRow}
-          tab={activeTab}
           t={t}
           lang={lang}
           onClose={() => setSelectedRow(null)}
         />
       )}
+
+      <InvoiceModal
+        orderId={selectedOrderId}
+        onClose={() => setSelectedOrderId(null)}
+        lang={lang}
+      />
     </Layout>
   )
 }
