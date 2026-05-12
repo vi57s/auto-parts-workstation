@@ -32,6 +32,7 @@ router.get('/sales', verifyToken, verifyOwner, async (req, res) => {
   try {
     let query = `
       SELECT o.order_id, o.invoice_type, o.total_amount, o.tax, o.discount, o.created_at,
+             o.invoice_number,
              u.name AS worker_name, c.name AS customer_name,
              COALESCE(
                json_agg(
@@ -78,15 +79,21 @@ router.get('/returns', verifyToken, verifyOwner, async (req, res) => {
   const { from, to } = req.query
   try {
     let query = `
-      SELECT r.return_id, r.order_id, r.quantity, r.refund_amount,
+      SELECT r.return_id, r.order_id, r.quantity,
+             r.quantity
+               * COALESCE(oi.unit_price, 0)
+               * (1 - COALESCE(o.discount, 0)::numeric / 100)
+               * (1 + CASE WHEN (o.total_amount - o.tax) > 0 THEN o.tax::numeric / (o.total_amount - o.tax) ELSE 0 END) AS refund_amount,
              r.return_date,
              u.name AS admin_name,
              c.name AS customer_name,
              seller.name AS worker_name,
              sp.part_name, sp.serial_number,
-             o.discount
+             o.discount,
+             o.invoice_number
       FROM returns r
       LEFT JOIN orders o ON r.order_id = o.order_id
+      LEFT JOIN order_items oi ON oi.order_id = r.order_id AND oi.part_id = r.part_id
       LEFT JOIN users u ON r.admin_id = u.user_id
       LEFT JOIN users seller ON o.user_id = seller.user_id
       LEFT JOIN customers c ON o.customer_id = c.customer_id

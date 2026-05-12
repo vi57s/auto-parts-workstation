@@ -107,7 +107,10 @@ function Returns() {
     setSearchError('')
     setMessage({ text: '', type: '' })
     try {
-      const data = await apiFetch(`/orders/${invoiceId.trim()}`)
+      const raw = invoiceId.trim()
+      const match = raw.match(/^\d{6}-(\d+)$/)
+      const orderId = match ? parseInt(match[1], 10) : raw
+      const data = await apiFetch(`/orders/${orderId}`)
       const map = await loadReturnedMap(data.order_id)
       updateDraft({ order: data, returnedMap: map, selected: {} })
     } catch {
@@ -239,7 +242,7 @@ function Returns() {
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div>
                   <span style={{ color: '#90887a' }}>{t.invoiceId}: </span>
-                  <span className="font-medium">{order.order_id}</span>
+                  <span className="font-medium font-mono">{order.invoice_number || order.order_id}</span>
                 </div>
                 <div>
                   <span style={{ color: '#90887a' }}>{t.date}: </span>

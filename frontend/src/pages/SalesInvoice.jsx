@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { flushSync } from 'react-dom'
 import Layout from '../components/Layout'
 import { useLang } from '../utils/lang'
 import { apiFetch } from '../utils/api'
@@ -121,9 +122,13 @@ function SalesInvoice() {
   const [customerResults, setCustomerResults] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState({ text: '', type: '' })
+  const [invoiceNumber, setInvoiceNumber] = useState(null)
 
-  const now = new Date()
-  const invoiceNum = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+  useEffect(() => {
+    apiFetch('/orders/next-invoice-number').then(d => {
+      if (d?.invoice_number) setInvoiceNumber(d.invoice_number)
+    }).catch(() => {})
+  }, [])
 
   const handleSearch = async () => {
     if (!serial.trim()) return
@@ -268,8 +273,9 @@ function SalesInvoice() {
         }
       }
 
+      let confirmedNum = null
       for (const item of items) {
-        await apiFetch('/orders/sell', {
+        const result = await apiFetch('/orders/sell', {
           method: 'POST',
           body: JSON.stringify({
             serial_number: item.serial_number,
@@ -280,13 +286,20 @@ function SalesInvoice() {
             tax_rate: taxRate,
           }),
         })
+        if (!confirmedNum && result?.invoice_number) confirmedNum = result.invoice_number
       }
 
-      setMessage({ text: t.success, type: 'success' })
+      flushSync(() => {
+        if (confirmedNum) setInvoiceNumber(confirmedNum)
+        setMessage({ text: t.success, type: 'success' })
+      })
       window.print()
       resetDraft()
       setFoundPart(null)
       setSerial('')
+      apiFetch('/orders/next-invoice-number').then(d => {
+        if (d?.invoice_number) setInvoiceNumber(d.invoice_number)
+      }).catch(() => {})
     } catch (err) {
       setMessage({ text: err.message || t.error, type: 'error' })
     } finally {
@@ -301,6 +314,9 @@ function SalesInvoice() {
     setSearchError('')
     setCustomerResults([])
     setMessage({ text: '', type: '' })
+    apiFetch('/orders/next-invoice-number').then(d => {
+      if (d?.invoice_number) setInvoiceNumber(d.invoice_number)
+    }).catch(() => {})
   }
 
   const inputStyle = {
@@ -322,7 +338,7 @@ function SalesInvoice() {
     <Layout titleKey="sales">
       <div className="print-invoice hidden print:block mb-8 text-center">
         <h1 className="text-2xl font-bold">AL-HAKIMI AUTO SPARE PARTS</h1>
-        <p className="text-sm">{t.invoiceNum}: {invoiceNum}</p>
+        <p className="text-sm">{t.invoiceNum}: {invoiceNumber || '—'}</p>
         <p className="text-sm">{new Date().toLocaleString()}</p>
       </div>
 
@@ -574,7 +590,7 @@ function SalesInvoice() {
               </div>
               <div className="flex justify-between">
                 <span style={{ color: '#90887a' }}>{t.invoiceNum}</span>
-                <span className="font-mono text-xs">{invoiceNum}</span>
+                <span className="font-mono text-xs">{invoiceNumber || '—'}</span>
               </div>
             </div>
 

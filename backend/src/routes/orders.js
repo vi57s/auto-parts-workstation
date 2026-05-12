@@ -13,7 +13,8 @@ function intervalForRole(role) {
 router.get("/full-statement", verifyToken, verifyOwner, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT o.*, u.name AS worker_name, c.name AS customer_name
+      `SELECT o.*, u.name AS worker_name, c.name AS customer_name,
+              o.invoice_number
        FROM orders o
        LEFT JOIN users u ON o.user_id = u.user_id
        LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -28,7 +29,8 @@ router.get("/full-statement", verifyToken, verifyOwner, async (req, res) => {
 router.get("/statement", verifyToken, verifyOwner, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT o.*, u.name AS worker_name, c.name AS customer_name
+      `SELECT o.*, u.name AS worker_name, c.name AS customer_name,
+              o.invoice_number
        FROM orders o
        LEFT JOIN users u ON o.user_id = u.user_id
        LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -60,11 +62,19 @@ router.post("/sell", verifyToken, async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const saleResult = await pool.query(
       "SELECT * FROM create_sale_by_serial($1, $2, $3, $4, $5, $6, $7)",
       [serial_number, quantity, user_id, discount, invoice_type, customer_id, tax_rate]
     );
-    res.json(result.rows[0]);
+    const row = saleResult.rows[0];
+    const newOrderId = row.order_id;
+    const today = new Date();
+    const datePart = String(today.getFullYear()).slice(2) + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
+    const countResult = await pool.query(`SELECT COUNT(*) FROM orders WHERE DATE(created_at) = CURRENT_DATE`);
+    const dailySeq = String(parseInt(countResult.rows[0].count)).padStart(2, '0');
+    const invoiceNumber = `${datePart}-${dailySeq}`;
+    await pool.query(`UPDATE orders SET invoice_number = $1 WHERE order_id = $2`, [invoiceNumber, newOrderId]);
+    res.json({ ...row, invoice_number: invoiceNumber });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -79,7 +89,8 @@ router.get("/", verifyToken, async (req, res) => {
       where = `WHERE o.created_at >= NOW() - INTERVAL '${interval}'`;
     }
     const result = await pool.query(
-      `SELECT o.*, u.name AS worker_name, c.name AS customer_name
+      `SELECT o.*, u.name AS worker_name, c.name AS customer_name,
+              o.invoice_number
        FROM orders o
        LEFT JOIN users u ON o.user_id = u.user_id
        LEFT JOIN customers c ON o.customer_id = c.customer_id
@@ -88,6 +99,18 @@ router.get("/", verifyToken, async (req, res) => {
       params
     );
     res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get("/next-invoice-number", verifyToken, async (req, res) => {
+  try {
+    const today = new Date();
+    const datePart = String(today.getFullYear()).slice(2) + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
+    const countResult = await pool.query(`SELECT COUNT(*) FROM orders WHERE DATE(created_at) = CURRENT_DATE`);
+    const nextSeq = String(parseInt(countResult.rows[0].count) + 1).padStart(2, '0');
+    res.json({ invoice_number: `${datePart}-${nextSeq}` });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -116,6 +139,7 @@ router.get("/:id/details", verifyToken, async (req, res) => {
     const result = await pool.query(
       `SELECT
          o.order_id, o.created_at, o.invoice_type, o.discount, o.tax, o.total_amount,
+         o.invoice_number,
          u.name AS seller_name, c.name AS customer_name,
          json_agg(
            json_build_object(
@@ -153,7 +177,8 @@ router.get("/:id", verifyToken, async (req, res) => {
   const { id } = req.params;
   try {
     const orderResult = await pool.query(
-      `SELECT o.*, u.name AS worker_name, c.name AS customer_name, c.phone AS customer_phone, c.customer_type
+      `SELECT o.*, u.name AS worker_name, c.name AS customer_name, c.phone AS customer_phone, c.customer_type,
+              o.invoice_number
        FROM orders o
        LEFT JOIN users u ON o.user_id = u.user_id
        LEFT JOIN customers c ON o.customer_id = c.customer_id

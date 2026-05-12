@@ -35,6 +35,8 @@ const texts = {
     date: 'التاريخ',
     cash: 'نقدي',
     credit: 'آجل',
+    partiallyReturned: 'مرتجع جزئي',
+    fullyReturned: 'مرتجع كلي',
     noData: 'لا توجد بيانات',
     print: 'طباعة',
     totalRevenue: 'إجمالي الإيرادات',
@@ -62,6 +64,8 @@ const texts = {
     date: 'Date',
     cash: 'Cash',
     credit: 'Credit',
+    partiallyReturned: 'Partial Return',
+    fullyReturned: 'Fully Returned',
     noData: 'No data available',
     print: 'Print',
     totalRevenue: 'Total Revenue',
@@ -122,13 +126,17 @@ function AccountStatement() {
         const entry = returnsByOrder[o.order_id]
         const refund = entry ? entry.total : 0
         const approver = entry ? Array.from(entry.approvers).join(', ') : ''
+        const total = parseFloat(o.total_amount || 0)
+        const returns_status = refund >= total - 0.01 && refund > 0 ? 'full' : refund > 0 ? 'partial' : 'none'
         return {
           order_id: o.order_id,
+          invoice_number: o.invoice_number,
           invoice_type: o.invoice_type,
           customer_name: o.customer_name,
-          total_amount: parseFloat(o.total_amount || 0),
+          total_amount: total,
           tax: parseFloat(o.tax || 0),
           refund_amount: refund,
+          returns_status,
           worker_name: o.worker_name,
           return_admin_name: approver,
           created_at: o.created_at,
@@ -266,17 +274,29 @@ function AccountStatement() {
                   const refund = parseFloat(row.refund_amount || 0)
                   return (
                     <tr key={i} className="border-b hover:bg-[#fdf9f9] cursor-pointer" style={{ borderColor: '#ede9e0' }} onClick={() => setSelectedOrderId(row.order_id)}>
-                      <td className="px-3 py-2">{row.order_id}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{row.invoice_number || row.order_id}</td>
                       <td className="px-3 py-2">
-                        <span
-                          className="px-2 py-0.5 rounded-full text-xs font-medium"
-                          style={{
-                            backgroundColor: row.invoice_type === 'cash' ? '#e6f9e6' : '#fff3e6',
-                            color: row.invoice_type === 'cash' ? '#166534' : '#9a3412',
-                          }}
-                        >
-                          {row.invoice_type === 'cash' ? t.cash : t.credit}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span
+                            className="px-2 py-0.5 rounded-full text-xs font-medium"
+                            style={{
+                              backgroundColor: row.invoice_type === 'cash' ? '#e6f9e6' : '#fff3e6',
+                              color: row.invoice_type === 'cash' ? '#166534' : '#9a3412',
+                            }}
+                          >
+                            {row.invoice_type === 'cash' ? t.cash : t.credit}
+                          </span>
+                          {row.returns_status === 'full' && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#fde2e2', color: '#9b2626' }}>
+                              {t.fullyReturned}
+                            </span>
+                          )}
+                          {row.returns_status === 'partial' && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#fff3e6', color: '#9a3412' }}>
+                              {t.partiallyReturned}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2">{row.customer_name || '—'}</td>
                       <td className="px-3 py-2 font-medium">{total.toFixed(2)}</td>

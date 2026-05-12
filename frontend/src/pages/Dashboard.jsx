@@ -244,7 +244,7 @@ function Dashboard() {
                   const partiallyReturned = refund > 0 && !fullyReturned
                   return (
                     <tr key={order.order_id} className="border-b hover:bg-[#fdf9f9] cursor-pointer" style={{ borderColor: '#ede9e0' }} onClick={() => setSelectedOrderId(order.order_id)}>
-                      <td className="px-4 py-3">{order.order_id}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{order.invoice_number || order.order_id}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-1">
                           <span

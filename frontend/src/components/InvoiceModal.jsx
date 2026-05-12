@@ -123,7 +123,7 @@ function InvoiceModal({ orderId, onClose, lang }) {
           <>
             <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b" style={{ borderColor: '#ede9e0' }}>
               <span className="font-semibold text-sm" style={{ color: '#18160f' }}>
-                {t.invoice} #{invoice.order_id}
+                {t.invoice} {invoice.invoice_number || invoice.order_id}
               </span>
               <span className="text-sm" style={{ color: '#90887a' }}>
                 {invoice.created_at ? new Date(invoice.created_at).toLocaleDateString() : '—'}
