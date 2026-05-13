@@ -276,8 +276,7 @@ function SalesInvoice() {
       const result = await apiFetch('/orders/sell', {
         method: 'POST',
         body: JSON.stringify({
-          items: items.map(i => ({ serial_number: i.serial_number, quantity: i.quantity })),
-          discount: items[0]?.discount_percentage ?? 0,
+          items: items.map(i => ({ serial_number: i.serial_number, quantity: i.quantity, discount: i.discount_percentage ?? 0 })),
           invoice_type: invoiceType,
           customer_id: resolvedCustomerId,
           tax_rate: taxRate,

@@ -40,7 +40,6 @@ router.get("/statement", verifyToken, verifyOwner, async (req, res) => {
 router.post("/sell", verifyToken, async (req, res) => {
   const {
     items,
-    discount = 0,
     invoice_type = "cash",
     customer_id = null,
     tax_rate = 0,
@@ -67,15 +66,16 @@ router.post("/sell", verifyToken, async (req, res) => {
       if (!partResult.rows.length) throw new Error(`Serial ${serial_number} not found`);
       const part = partResult.rows[0];
       if (quantity > part.stock) throw new Error(`Insufficient stock for ${part.part_name}`);
-      const priceAfterDiscount = parseFloat(part.price) * (1 - discount / 100);
+      const itemDiscount = typeof item.discount === 'number' ? Math.min(100, Math.max(0, item.discount)) : 0;
+      const priceAfterDiscount = parseFloat(part.price) * (1 - itemDiscount / 100);
       if (priceAfterDiscount < parseFloat(part.cost_price)) {
         throw new Error(`Price below cost for ${part.part_name}`);
       }
-      validatedItems.push({ ...part, qty: quantity });
+      validatedItems.push({ ...part, qty: quantity, discount: itemDiscount });
     }
 
     const subtotal = validatedItems.reduce(
-      (sum, i) => sum + parseFloat(i.price) * i.qty * (1 - discount / 100), 0
+      (sum, i) => sum + parseFloat(i.price) * i.qty * (1 - i.discount / 100), 0
     );
     const taxAmount = subtotal * (tax_rate / 100);
     const total = subtotal + taxAmount;
@@ -84,14 +84,14 @@ router.post("/sell", verifyToken, async (req, res) => {
       `INSERT INTO orders (status, total_amount, user_id, discount, invoice_type, customer_id, tax)
        VALUES ('Completed', $1, $2, $3, $4, $5, $6)
        RETURNING order_id`,
-      [total, user_id, discount, invoice_type, customer_id || null, taxAmount]
+      [total, user_id, 0, invoice_type, customer_id || null, taxAmount]
     );
     const orderId = orderResult.rows[0].order_id;
 
     for (const item of validatedItems) {
       await pool.query(
-        `INSERT INTO order_items (order_id, part_id, quantity, unit_price) VALUES ($1, $2, $3, $4)`,
-        [orderId, item.part_id, item.qty, item.price]
+        `INSERT INTO order_items (order_id, part_id, quantity, unit_price, discount) VALUES ($1, $2, $3, $4, $5)`,
+        [orderId, item.part_id, item.qty, item.price, item.discount]
       );
       await pool.query(
         `UPDATE spare_parts SET quantity = quantity - $1 WHERE part_id = $2`,
@@ -113,7 +113,6 @@ router.post("/sell", verifyToken, async (req, res) => {
       invoice_number: invoiceNumber,
       total_amount: total,
       tax: taxAmount,
-      discount,
       invoice_type,
     });
   } catch (err) {
@@ -226,6 +225,7 @@ router.get("/:id/details", verifyToken, async (req, res) => {
              'serial_number', sp.serial_number,
              'quantity_sold', oi.quantity,
              'unit_price', oi.unit_price,
+             'discount', oi.discount,
              'quantity_returned', COALESCE((
                SELECT SUM(ri.quantity)
                FROM returns ret

@@ -78,7 +78,7 @@ router.get('/returns', verifyToken, verifyOwner, async (req, res) => {
         SUM(
           ri.quantity
           * COALESCE(oi.unit_price, 0)
-          * (1 - COALESCE(o.discount, 0)::numeric / 100)
+          * (1 - COALESCE(oi.discount, 0)::numeric / 100)
           * (1 + CASE WHEN (o.total_amount - o.tax) > 0 THEN o.tax::numeric / (o.total_amount - o.tax) ELSE 0 END)
         ) AS refund_amount,
         json_agg(json_build_object(

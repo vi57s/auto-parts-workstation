@@ -72,6 +72,8 @@ function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [accessDeniedToast, setAccessDeniedToast] = useState(false)
   const [selectedOrderId, setSelectedOrderId] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const rowsPerPage = 10
 
   useEffect(() => {
     try {
@@ -123,7 +125,8 @@ function Dashboard() {
         })
 
         setReturnsByOrder(byOrder)
-        setRecentOrders(orders.slice(0, 10))
+        setRecentOrders(orders)
+        setCurrentPage(1)
       } catch {
         setRecentOrders([])
       } finally {
@@ -132,6 +135,12 @@ function Dashboard() {
     }
     fetchData()
   }, [])
+
+  const totalPages = Math.ceil(recentOrders.length / rowsPerPage)
+  const paginatedOrders = recentOrders.slice(
+    (currentPage - 1) * rowsPerPage,
+    currentPage * rowsPerPage
+  )
 
   const statCards = [
     {
@@ -238,7 +247,7 @@ function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentOrders.map((order) => {
+                {paginatedOrders.map((order) => {
                   const total = parseFloat(order.total_amount || 0)
                   const refund = returnsByOrder[order.order_id]?.refund || 0
                   const fullyReturned = refund > 0 && refund >= total - 0.01
@@ -280,6 +289,31 @@ function Dashboard() {
                 })}
               </tbody>
             </table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-3 border-t" style={{ borderColor: '#ede9e0' }}>
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:opacity-40"
+                  style={{ borderColor: '#dedad0', color: '#18160f' }}
+                >
+                  {lang === 'ar' ? 'السابق' : 'Previous'}
+                </button>
+                <span className="text-sm" style={{ color: '#90887a' }}>
+                  {lang === 'ar'
+                    ? `صفحة ${currentPage} من ${totalPages}`
+                    : `Page ${currentPage} of ${totalPages}`}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:opacity-40"
+                  style={{ borderColor: '#dedad0', color: '#18160f' }}
+                >
+                  {lang === 'ar' ? 'التالي' : 'Next'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

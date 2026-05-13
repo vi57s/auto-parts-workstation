@@ -82,15 +82,12 @@ function InvoiceModal({ orderId, onClose, lang }) {
   if (!orderId) return null
 
   const items = invoice?.items || []
-  const rawSubtotal = items.reduce((s, i) => s + parseFloat(i.unit_price) * parseInt(i.quantity_sold, 10), 0)
-  const discount = parseFloat(invoice?.discount || 0)
-  const discountAmount = rawSubtotal * (discount / 100)
-  const subtotalAfterDiscount = rawSubtotal - discountAmount
+  const rawSubtotal = items.reduce((s, i) => s + parseFloat(i.unit_price) * parseInt(i.quantity_sold, 10) * (1 - parseFloat(i.discount || 0) / 100), 0)
   const taxAmount = parseFloat(invoice?.tax || 0)
-  const totalPaid = subtotalAfterDiscount + taxAmount
-  const taxRate = subtotalAfterDiscount > 0 ? taxAmount / subtotalAfterDiscount : 0
+  const totalPaid = rawSubtotal + taxAmount
+  const taxRate = rawSubtotal > 0 ? taxAmount / rawSubtotal : 0
   const totalReturns = items.reduce((s, i) => {
-    const effectiveUnitPrice = parseFloat(i.unit_price) * (1 - discount / 100)
+    const effectiveUnitPrice = parseFloat(i.unit_price) * (1 - parseFloat(i.discount || 0) / 100)
     const itemRefund = parseInt(i.quantity_returned || 0, 10) * effectiveUnitPrice * (1 + taxRate)
     return s + itemRefund
   }, 0)
@@ -164,7 +161,7 @@ function InvoiceModal({ orderId, onClose, lang }) {
                 </thead>
                 <tbody>
                   {items.map((item, i) => {
-                    const itemSubtotal = parseFloat(item.unit_price) * parseInt(item.quantity_sold, 10) * (1 - discount / 100)
+                    const itemSubtotal = parseFloat(item.unit_price) * parseInt(item.quantity_sold, 10) * (1 - parseFloat(item.discount || 0) / 100)
                     const qtyRet = parseInt(item.quantity_returned || 0, 10)
                     return (
                       <tr key={i} className="border-b" style={{ borderColor: '#ede9e0' }}>
@@ -175,8 +172,8 @@ function InvoiceModal({ orderId, onClose, lang }) {
                           {qtyRet > 0 ? qtyRet : '—'}
                         </td>
                         <td className="px-2 py-1.5 border" style={{ borderColor: '#ede9e0' }}>{parseFloat(item.unit_price).toFixed(2)}</td>
-                        <td className="px-2 py-1.5 border" style={{ borderColor: '#ede9e0', color: discount > 0 ? '#9a3412' : undefined }}>
-                          {discount > 0 ? `${discount}%` : t.noDiscount}
+                        <td className="px-2 py-1.5 border" style={{ borderColor: '#ede9e0', color: parseFloat(item.discount || 0) > 0 ? '#9a3412' : undefined }}>
+                          {parseFloat(item.discount || 0) > 0 ? `${parseFloat(item.discount || 0)}%` : t.noDiscount}
                         </td>
                         <td className="px-2 py-1.5 border font-medium" style={{ borderColor: '#ede9e0' }}>{itemSubtotal.toFixed(2)}</td>
                       </tr>
@@ -191,12 +188,6 @@ function InvoiceModal({ orderId, onClose, lang }) {
                 <span style={{ color: '#90887a' }}>{t.subtotal}</span>
                 <span style={{ color: '#18160f' }}>{rawSubtotal.toFixed(2)}</span>
               </div>
-              {discount > 0 && (
-                <div className="flex justify-between">
-                  <span style={{ color: '#9a3412' }}>{t.discount} ({discount}%)</span>
-                  <span style={{ color: '#9a3412' }}>- {discountAmount.toFixed(2)}</span>
-                </div>
-              )}
               <div className="flex justify-between">
                 <span style={{ color: '#90887a' }}>{t.tax}</span>
                 <span style={{ color: '#18160f' }}>{taxAmount.toFixed(2)}</span>
