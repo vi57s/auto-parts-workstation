@@ -89,19 +89,18 @@ router.get("/:id/sales", verifyToken, async (req, res) => {
     const soldRes = await pool.query(
       `SELECT COALESCE(SUM(oi.quantity), 0) AS total_sold
        FROM order_items oi
-       JOIN orders o ON o.order_id = oi.order_id
+       JOIN orders o ON oi.order_id = o.order_id
        WHERE oi.part_id = $1
-         AND o.created_at >= $2
-         AND o.created_at <= $3`,
-      [id, dateFrom, dateToEnd]
+         AND o.created_at::date BETWEEN $2::date AND $3::date`,
+      [id, dateFrom, dateTo]
     )
     const returnedRes = await pool.query(
-      `SELECT COALESCE(SUM(quantity), 0) AS total_returned
-       FROM returns
-       WHERE part_id = $1
-         AND return_date >= $2
-         AND return_date <= $3`,
-      [id, dateFrom, dateToEnd]
+      `SELECT COALESCE(SUM(ri.quantity), 0) AS total_returned
+       FROM return_items ri
+       JOIN returns r ON ri.return_id = r.return_id
+       WHERE ri.part_id = $1
+         AND r.return_date::date BETWEEN $2::date AND $3::date`,
+      [id, dateFrom, dateTo]
     )
     const total_sold = parseInt(soldRes.rows[0].total_sold, 10)
     const total_returned = parseInt(returnedRes.rows[0].total_returned, 10)
@@ -113,6 +112,7 @@ router.get("/:id/sales", verifyToken, async (req, res) => {
       to: dateTo,
     })
   } catch (err) {
+    console.error('[parts GET /:id/sales] error:', err.message, err.stack)
     res.status(500).json({ message: err.message })
   }
 })

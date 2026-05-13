@@ -730,8 +730,11 @@ function AuditLog() {
                       </td>
                       <td className="px-3 py-2">
                         {Array.isArray(row.items)
-                          ? row.items.map((i) => i.part_name).filter(Boolean).join(', ') || '—'
-                          : '—'}
+                          ? row.items
+                              .map((i) => i.part_name)
+                              .filter(Boolean)
+                              .join(", ") || "—"
+                          : "—"}
                       </td>
                       <td className="px-3 py-2">{row.quantity}</td>
                       <td className="px-3 py-2 text-red-600 font-medium">

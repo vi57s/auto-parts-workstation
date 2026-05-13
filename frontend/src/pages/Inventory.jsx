@@ -165,8 +165,10 @@ function Inventory() {
     setSalesLoading(true)
     try {
       const data = await apiFetch(`/parts/${partId}/sales?from=${from}&to=${to}`)
+      console.log('[fetchPartSales] response:', data)
       setSalesHistory(data)
-    } catch {
+    } catch (err) {
+      console.error('[fetchPartSales] error:', err.message)
       setSalesHistory(null)
     } finally {
       setSalesLoading(false)
@@ -493,26 +495,28 @@ function Inventory() {
 
               {salesLoading ? (
                 <div className="py-6 text-center" style={{ color: '#90887a' }}>...</div>
-              ) : !salesHistory ? (
-                <div className="py-6 text-center text-sm" style={{ color: '#90887a' }}>{t.noSalesInPeriod}</div>
-              ) : salesHistory.net_sold === 0 && salesHistory.total_sold === 0 ? (
+              ) : !salesHistory || (salesHistory.total_sold === 0 && salesHistory.total_returned === 0 && salesHistory.net_sold === 0) ? (
                 <div className="py-6 text-center text-sm" style={{ color: '#90887a' }}>{t.noSalesInPeriod}</div>
               ) : (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="rounded-lg p-3 text-center" style={{ backgroundColor: '#eff6ff' }}>
-                    <div className="text-2xl font-bold" style={{ color: '#1d4ed8' }}>{salesHistory.total_sold}</div>
-                    <div className="text-xs mt-0.5" style={{ color: '#3b82f6' }}>{t.totalSold}</div>
-                    <div className="text-xs" style={{ color: '#93c5fd' }}>{t.units}</div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center py-1.5 border-b" style={{ borderColor: '#ede9e0' }}>
+                    <span style={{ color: '#90887a' }}>{t.totalSold}</span>
+                    <span className="font-semibold" style={{ color: '#18160f' }}>{salesHistory.total_sold} {t.units}</span>
                   </div>
-                  <div className="rounded-lg p-3 text-center" style={{ backgroundColor: '#fde2e2' }}>
-                    <div className="text-2xl font-bold" style={{ color: '#9b2626' }}>{salesHistory.total_returned}</div>
-                    <div className="text-xs mt-0.5" style={{ color: '#9b2626' }}>{t.totalReturned}</div>
-                    <div className="text-xs" style={{ color: '#fca5a5' }}>{t.units}</div>
+                  <div className="flex justify-between items-center py-1.5 border-b" style={{ borderColor: '#ede9e0' }}>
+                    <span style={{ color: '#90887a' }}>{t.totalReturned}</span>
+                    <span className="font-semibold" style={{ color: '#9b2626' }}>{salesHistory.total_returned} {t.units}</span>
                   </div>
-                  <div className="rounded-lg p-3 text-center" style={{ backgroundColor: '#e6f9e6' }}>
-                    <div className="text-2xl font-bold" style={{ color: '#166534' }}>{salesHistory.net_sold}</div>
-                    <div className="text-xs mt-0.5" style={{ color: '#166534' }}>{t.netSold}</div>
-                    <div className="text-xs" style={{ color: '#86efac' }}>{t.units}</div>
+                  <div className="flex justify-between items-center py-1.5">
+                    <span style={{ color: '#90887a' }}>{t.netSold}</span>
+                    <span
+                      className="font-semibold"
+                      style={{
+                        color: salesHistory.net_sold > 0 ? '#166534' : salesHistory.net_sold < 0 ? '#9b2626' : '#9ca3af',
+                      }}
+                    >
+                      {salesHistory.net_sold} {t.units}
+                    </span>
                   </div>
                 </div>
               )}
