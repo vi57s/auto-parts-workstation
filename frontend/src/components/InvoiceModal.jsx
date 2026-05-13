@@ -65,6 +65,7 @@ function InvoiceModal({ orderId, onClose, lang }) {
 
   useEffect(() => {
     if (!orderId) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setInvoice(null)
     setReturnsMeta([])

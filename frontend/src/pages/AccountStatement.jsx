@@ -269,7 +269,7 @@ function AccountStatement() {
                 </tr>
               </thead>
               <tbody>
-                {data.map((row, i) => {
+                {data.map((row) => {
                   const total = parseFloat(row.total_amount || 0)
                   const refund = parseFloat(row.refund_amount || 0)
                   return (

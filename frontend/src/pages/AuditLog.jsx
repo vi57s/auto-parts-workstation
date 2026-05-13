@@ -390,6 +390,7 @@ function AuditLog() {
 
   useEffect(() => {
     fetchTab(activeTab, dateFrom, dateTo);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, fetchTab]);
 
   const handleApply = () => {
