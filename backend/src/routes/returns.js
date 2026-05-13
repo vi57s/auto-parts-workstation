@@ -4,11 +4,6 @@ const { verifyToken, verifyAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
-function intervalForRole(role) {
-  if (role === "owner") return null;
-  if (role === "admin") return "14 days";
-  return "3 days";
-}
 
 router.post("/", verifyToken, verifyAdmin, async (req, res) => {
   const { order_id, items } = req.body;
@@ -69,17 +64,17 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
     res.json({ return_id: returnId, message: "Return processed successfully" });
   } catch (err) {
     await pool.query("ROLLBACK");
-    console.error('[returns POST /] error:', err.message, err.stack);
+    console.error('[returns POST /] error:', err.message);
     res.status(400).json({ message: err.message });
   }
 });
 
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const interval = intervalForRole(req.user.role);
+    const intervalMap = { admin: "14 days", worker: "3 days" };
     let where = "";
-    if (interval) {
-      where = `WHERE r.return_date >= NOW() - INTERVAL '${interval}'`;
+    if (intervalMap[req.user.role]) {
+      where = `WHERE r.return_date >= NOW() - INTERVAL '${intervalMap[req.user.role]}'`;
     }
     const result = await pool.query(
       `SELECT
@@ -118,7 +113,7 @@ router.get("/", verifyToken, async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('[returns GET /] error:', err.message, err.stack);
+    console.error('[returns GET /] error:', err.message);
     res.status(500).json({ message: err.message });
   }
 });

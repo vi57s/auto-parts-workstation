@@ -112,7 +112,7 @@ router.get("/:id/sales", verifyToken, async (req, res) => {
       to: dateTo,
     })
   } catch (err) {
-    console.error('[parts GET /:id/sales] error:', err.message, err.stack)
+    console.error('[parts GET /:id/sales] error:', err.message)
     res.status(500).json({ message: err.message })
   }
 })

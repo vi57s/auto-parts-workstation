@@ -118,7 +118,7 @@ function AccountStatement() {
         if (!returnsByOrder[oid]) {
           returnsByOrder[oid] = { total: 0, approvers: new Set() }
         }
-        returnsByOrder[oid].total += parseFloat(r.correct_refund_amount ?? r.refund_amount ?? 0)
+        returnsByOrder[oid].total += parseFloat(r.refund_amount ?? 0)
         if (r.admin_name) returnsByOrder[oid].approvers.add(r.admin_name)
       }
 
@@ -273,7 +273,7 @@ function AccountStatement() {
                   const total = parseFloat(row.total_amount || 0)
                   const refund = parseFloat(row.refund_amount || 0)
                   return (
-                    <tr key={i} className="border-b hover:bg-[#fdf9f9] cursor-pointer" style={{ borderColor: '#ede9e0' }} onClick={() => setSelectedOrderId(row.order_id)}>
+                    <tr key={row.order_id} className="border-b hover:bg-[#fdf9f9] cursor-pointer" style={{ borderColor: '#ede9e0' }} onClick={() => setSelectedOrderId(row.order_id)}>
                       <td className="px-3 py-2 font-mono text-xs">{row.invoice_number || row.order_id}</td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-1">

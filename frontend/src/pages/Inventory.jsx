@@ -165,7 +165,6 @@ function Inventory() {
     setSalesLoading(true)
     try {
       const data = await apiFetch(`/parts/${partId}/sales?from=${from}&to=${to}`)
-      console.log('[fetchPartSales] response:', data)
       setSalesHistory(data)
     } catch (err) {
       console.error('[fetchPartSales] error:', err.message)

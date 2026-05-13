@@ -64,7 +64,8 @@ const texts = {
 function Dashboard() {
   const { lang } = useLang()
   const t = texts[lang]
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  let user = {}
+  try { user = JSON.parse(localStorage.getItem('user') || '{}') } catch { user = {} }
   const [stats, setStats] = useState({ salesCount: 0, revenue: 0, totalParts: 0, lowStock: 0 })
   const [recentOrders, setRecentOrders] = useState([])
   const [returnsByOrder, setReturnsByOrder] = useState({})
@@ -104,7 +105,7 @@ function Dashboard() {
         for (const r of returns) {
           const oid = r.order_id
           if (!byOrder[oid]) byOrder[oid] = { refund: 0, qty: 0 }
-          byOrder[oid].refund += parseFloat(r.correct_refund_amount ?? r.refund_amount ?? 0)
+          byOrder[oid].refund += parseFloat(r.refund_amount ?? 0)
           byOrder[oid].qty += parseInt(r.quantity || 0, 10)
         }
 
@@ -112,7 +113,7 @@ function Dashboard() {
         const todayRevenue = todayOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
         const todayReturnRefund = returns
           .filter((r) => r.return_date && r.return_date.startsWith(today))
-          .reduce((sum, r) => sum + parseFloat(r.correct_refund_amount ?? r.refund_amount ?? 0), 0)
+          .reduce((sum, r) => sum + parseFloat(r.refund_amount ?? 0), 0)
 
         setStats({
           salesCount: todayOrders.length,

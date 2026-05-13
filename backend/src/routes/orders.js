@@ -4,11 +4,6 @@ const { verifyToken, verifyAdmin, verifyOwner } = require("../middleware/auth");
 
 const router = express.Router();
 
-function intervalForRole(role) {
-  if (role === "owner") return null;
-  if (role === "admin") return "14 days";
-  return "3 days";
-}
 
 router.get("/full-statement", verifyToken, verifyOwner, async (req, res) => {
   try {
@@ -129,11 +124,11 @@ router.post("/sell", verifyToken, async (req, res) => {
 
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const interval = intervalForRole(req.user.role);
+    const intervalMap = { admin: "14 days", worker: "3 days" };
     const params = [];
     let where = "";
-    if (interval) {
-      where = `WHERE o.created_at >= NOW() - INTERVAL '${interval}'`;
+    if (intervalMap[req.user.role]) {
+      where = `WHERE o.created_at >= NOW() - INTERVAL '${intervalMap[req.user.role]}'`;
     }
     const result = await pool.query(
       `SELECT o.*, u.name AS worker_name, c.name AS customer_name,
@@ -211,7 +206,7 @@ router.get("/:id/returns-meta", verifyToken, async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('[orders GET /:id/returns-meta] error:', err.message, err.stack);
+    console.error('[orders GET /:id/returns-meta] error:', err.message);
     res.status(500).json({ message: err.message });
   }
 });
@@ -253,7 +248,7 @@ router.get("/:id/details", verifyToken, async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('[orders GET /:id/details] error:', err.message, err.stack);
+    console.error('[orders GET /:id/details] error:', err.message);
     res.status(500).json({ message: err.message });
   }
 });
