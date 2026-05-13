@@ -122,6 +122,8 @@ function Inventory() {
   const [salesLoading, setSalesLoading] = useState(false)
   const [salesFrom, setSalesFrom] = useState(() => initSalesDate(-30))
   const [salesTo, setSalesTo] = useState(() => initSalesDate(0))
+  const [currentPage, setCurrentPage] = useState(1)
+  const rowsPerPage = 15
 
   const inputStyle = { border: '1.5px solid #d8d4c8', backgroundColor: '#f9f8f4' }
   const handleInputFocus = (e) => {
@@ -160,6 +162,10 @@ function Inventory() {
     fetchParts()
     fetchDepleting()
   }, [fetchParts, fetchDepleting])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, depletingOnly, lowStockOnly])
 
   const fetchPartSales = async (partId, from, to) => {
     setSalesLoading(true)
@@ -262,6 +268,11 @@ function Inventory() {
   const displayRows = isDepletingView ? filteredDepleting : filtered
   const isTableLoading = loading || (isDepletingView && depletingLoading)
   const isRTL = lang === 'ar'
+  const totalPages = Math.ceil(displayRows.length / rowsPerPage)
+  const paginatedRows = displayRows.slice(
+    (currentPage - 1) * rowsPerPage,
+    currentPage * rowsPerPage
+  )
 
   return (
     <Layout titleKey="inventory">
@@ -355,7 +366,7 @@ function Inventory() {
                 </tr>
               </thead>
               <tbody>
-                {displayRows.map((part) => {
+                {paginatedRows.map((part) => {
                   const qty = isDepletingView ? part.current_stock : part.quantity
                   return (
                     <tr
@@ -400,6 +411,31 @@ function Inventory() {
                 })}
               </tbody>
             </table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-3 border-t print:hidden" style={{ borderColor: '#ede9e0' }}>
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:opacity-40"
+                  style={{ borderColor: '#dedad0', color: '#18160f' }}
+                >
+                  {lang === 'ar' ? 'السابق' : 'Previous'}
+                </button>
+                <span className="text-sm" style={{ color: '#90887a' }}>
+                  {lang === 'ar'
+                    ? `صفحة ${currentPage} من ${totalPages}`
+                    : `Page ${currentPage} of ${totalPages}`}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:opacity-40"
+                  style={{ borderColor: '#dedad0', color: '#18160f' }}
+                >
+                  {lang === 'ar' ? 'التالي' : 'Next'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

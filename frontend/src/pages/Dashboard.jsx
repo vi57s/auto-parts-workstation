@@ -73,7 +73,7 @@ function Dashboard() {
   const [accessDeniedToast, setAccessDeniedToast] = useState(false)
   const [selectedOrderId, setSelectedOrderId] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const rowsPerPage = 10
+  const rowsPerPage = 15
 
   useEffect(() => {
     try {
